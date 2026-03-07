@@ -26,6 +26,26 @@ if ($DriveGroups.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($env:VERIFY_
 
 $checks = New-Object System.Collections.Generic.List[object]
 
+function Get-HttpErrorDetails {
+    param($ErrorRecord)
+    $message = $ErrorRecord.Exception.Message
+    try {
+        $response = $ErrorRecord.Exception.Response
+        if ($null -ne $response) {
+            $stream = $response.GetResponseStream()
+            if ($null -ne $stream) {
+                $reader = New-Object System.IO.StreamReader($stream)
+                $body = $reader.ReadToEnd()
+                if (-not [string]::IsNullOrWhiteSpace($body)) {
+                    return "$message | body=$body"
+                }
+            }
+        }
+    } catch {
+    }
+    return $message
+}
+
 function Add-Check {
     param(
         [string]$Name,
@@ -63,7 +83,7 @@ try {
     Add-Check "Liveness endpoint" ($live.status -eq "ok") ("status={0}" -f $live.status)
     Add-Check "Readiness endpoint" ($ready.status -eq "ok") ("status={0}" -f $ready.status)
 } catch {
-    Add-Check "API health" $false $_.Exception.Message
+    Add-Check "API health" $false (Get-HttpErrorDetails $_)
 }
 
 Write-Host "[2/6] Ingest local sample docs"
@@ -77,7 +97,7 @@ try {
     $localPass = (($localIngest.added + $localIngest.updated) -ge 1)
     Add-Check "Local ingest" $localPass ("added={0} updated={1} skipped={2}" -f $localIngest.added, $localIngest.updated, $localIngest.skipped)
 } catch {
-    Add-Check "Local ingest" $false $_.Exception.Message
+    Add-Check "Local ingest" $false (Get-HttpErrorDetails $_)
 }
 
 Write-Host "[3/6] ACL regression (HR vs Finance)"
@@ -114,7 +134,7 @@ try {
     $finPass = ($finResp.citations.Count -ge 1) -and ($finDocs -contains "finance_only.txt") -and -not ($finDocs -contains "hr_only.txt")
     Add-Check "Finance sees Finance+public, not HR" $finPass ("cited={0}" -f (($finDocs | Sort-Object -Unique) -join ", "))
 } catch {
-    Add-Check "ACL regression" $false $_.Exception.Message
+    Add-Check "ACL regression" $false (Get-HttpErrorDetails $_)
 }
 
 Write-Host "[4/6] Google Drive ingest (optional)"
@@ -130,7 +150,7 @@ if ($SkipDrive -or [string]::IsNullOrWhiteSpace($DriveFolderId)) {
         }
         Add-Check "Drive ingest" $true ("added={0} updated={1} skipped={2}" -f $driveIngest.added, $driveIngest.updated, $driveIngest.skipped)
     } catch {
-        Add-Check "Drive ingest" $false $_.Exception.Message
+        Add-Check "Drive ingest" $false (Get-HttpErrorDetails $_)
     }
 }
 
@@ -139,7 +159,7 @@ if ($SkipDrive -or [string]::IsNullOrWhiteSpace($DriveFolderId) -or [string]::Is
     Add-Check "Drive query" $true "skipped (set Drive identity: -DriveEmail/-DriveDomain)"
 } else {
     try {
-        $groups = if ($DriveGroups.Count -gt 0) { $DriveGroups } else { @("HR") }
+        $groups = if ($DriveGroups.Count -gt 0) { @($DriveGroups) } else { @("HR") }
         $driveResp = Invoke-JsonPost -Path "/query" -Body @{
             query = "Summarize Google Drive documents with citations."
             mode = "summarize"
@@ -149,14 +169,14 @@ if ($SkipDrive -or [string]::IsNullOrWhiteSpace($DriveFolderId) -or [string]::Is
             user_context = @{
                 email = $DriveEmail
                 domain = $DriveDomain
-                groups = $groups
+                groups = @($groups)
             }
         }
         $driveWeb = @($driveResp.citations | Where-Object { $_.webViewLink })
         $drivePass = ($driveResp.refusal_reason -eq $null) -and ($driveWeb.Count -ge 1)
         Add-Check "Drive query returns Drive citations" $drivePass ("citations={0}" -f $driveResp.citations.Count)
     } catch {
-        Add-Check "Drive query returns Drive citations" $false $_.Exception.Message
+        Add-Check "Drive query returns Drive citations" $false (Get-HttpErrorDetails $_)
     }
 }
 
