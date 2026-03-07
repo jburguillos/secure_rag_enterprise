@@ -1,0 +1,4 @@
+-e ./api[dev]
+-r ./ui/requirements.txt
+requests>=2.32,<3
+PyYAML>=6.0.2,<7

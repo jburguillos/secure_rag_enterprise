@@ -1,0 +1,105 @@
+﻿"""Application configuration and settings."""
+
+from __future__ import annotations
+
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AppSettings(BaseSettings):
+    """Environment-backed settings."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    app_mode: str = "prod"
+    allow_public_llm: bool = False
+    allow_outbound: bool = False
+    enable_ocr: bool = False
+    enable_rerank: bool = False
+
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_text_collection: str = "text_nodes"
+    qdrant_image_collection: str = "image_nodes"
+
+    database_url: str = "sqlite+pysqlite:///./secure_rag.db"
+
+    llm_provider: str = "ollama"
+    embedding_provider: str = "ollama"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_chat_model: str = "llama3.1:8b"
+    ollama_embed_model: str = "nomic-embed-text"
+
+    public_llm_base_url: str | None = None
+    public_llm_api_key: str | None = None
+
+    drive_auth_mode: str = "oauth"
+    google_credentials_path: str = "/data/google/credentials.json"
+    google_token_path: str = "/data/google/token.json"
+    google_service_account_json: str | None = None
+    drive_folder_id: str = ""
+    drive_group_map_json: str = "{}"
+
+    auth_enabled: bool = False
+    keycloak_issuer: str = "http://localhost:8080/realms/secure-rag"
+    keycloak_audience: str = "secure-rag-api"
+
+    opa_url: str = "http://localhost:8181"
+    opa_policy_path: str = "/v1/data/secure_rag/authz/allow"
+    opa_fail_closed: bool = True
+
+    top_k_dense: int = 8
+    top_k_bm25: int = 8
+    top_k_fused: int = 8
+    retrieval_candidate_multiplier: int = 4
+    retrieval_candidate_max: int = 80
+    retrieval_doc_diversity_max_chunks: int = 2
+
+    rerank_top_candidates: int = 40
+
+    max_context_chars: int = 12000
+    generation_max_evidence_nodes: int = 4
+    generation_doc_diversity_max_chunks: int = 1
+
+    summarize_map_max_docs: int = 6
+    summarize_map_chars_per_doc: int = 700
+
+    require_citations: bool = True
+    min_citations: int = 1
+    refusal_text: str = "I do not have enough authorized evidence to answer that."
+
+    local_ingest_root: str = "./tests/data/sample_docs"
+    local_acl_sidecar: str = "./tests/data/sample_docs/acl_map.yaml"
+    pdf_image_root: str = "./artifacts/pdf_images"
+    audit_raw_query: bool = False
+
+    config_path: Path = Field(default=Path("/app/config/config.yml"))
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> AppSettings:
+    """Return cached settings instance."""
+
+    return AppSettings()
+
+
+@lru_cache(maxsize=1)
+def get_yaml_config(config_path: str | None = None) -> dict[str, Any]:
+    """Load YAML config from disk if available."""
+
+    settings = get_settings()
+    path = Path(config_path) if config_path else settings.config_path
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        return {}
+    return data

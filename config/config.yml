@@ -1,0 +1,44 @@
+﻿app:
+  config_version: "1.0"
+  no_outbound_default: true
+  require_citations: true
+  min_citations: 1
+  max_context_chars: 12000
+
+retrieval:
+  dense_top_k: 8
+  bm25_top_k: 8
+  fused_top_k: 8
+  candidate_multiplier: 4
+  candidate_max: 80
+  doc_diversity_max_chunks: 2
+  rerank_top_candidates: 40
+  fusion_method: rrf
+  rrf_k: 60
+
+chunking:
+  chunk_size: 800
+  chunk_overlap: 120
+
+summarization:
+  map_max_docs: 6
+  map_chars_per_doc: 700
+
+multimodal:
+  enable_ocr: false
+  image_collection: image_nodes
+  text_collection: text_nodes
+
+models:
+  llm_provider: ollama
+  llm_model: llama3.1:8b
+  embedding_provider: ollama
+  embedding_model: nomic-embed-text
+  vlm_router: disabled
+
+security:
+  auth_enabled: false
+  drive_group_map_json: {}
+  opa_fail_closed: true
+  pseudonymize_user_id: true
+  log_raw_query: false

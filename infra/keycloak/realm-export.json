@@ -1,0 +1,66 @@
+{
+  "realm": "secure-rag",
+  "enabled": true,
+  "displayName": "Secure RAG MVP",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "secure-rag-api",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "redirectUris": [
+        "http://localhost:8501/*",
+        "http://ui:8501/*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "HR"
+    },
+    {
+      "name": "Finance"
+    }
+  ],
+  "users": [
+    {
+      "username": "hr.user",
+      "enabled": true,
+      "email": "hr.user@example.com",
+      "emailVerified": true,
+      "groups": [
+        "HR"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "finance.user",
+      "enabled": true,
+      "email": "finance.user@example.com",
+      "emailVerified": true,
+      "groups": [
+        "Finance"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ChangeMe123!",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

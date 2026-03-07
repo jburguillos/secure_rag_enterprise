@@ -1,0 +1,25 @@
+documents:
+  public.txt:
+    is_public: true
+    allowed_emails: []
+    allowed_domains: []
+    allowed_users: []
+    allowed_groups: []
+    permissions_raw:
+      source: local
+  hr_only.txt:
+    is_public: false
+    allowed_groups: ["hr"]
+    allowed_users: []
+    allowed_emails: []
+    allowed_domains: []
+    permissions_raw:
+      source: local
+  finance_only.txt:
+    is_public: false
+    allowed_groups: ["finance"]
+    allowed_users: []
+    allowed_emails: []
+    allowed_domains: []
+    permissions_raw:
+      source: local

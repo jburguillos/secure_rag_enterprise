@@ -1,0 +1,2 @@
+Public handbook: employees can see this document.
+It includes office hours and holiday calendar.
