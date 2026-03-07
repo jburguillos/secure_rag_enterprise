@@ -229,3 +229,42 @@ Tuning knobs (`.env`):
 - `GENERATION_DOC_DIVERSITY_MAX_CHUNKS`
 - `SUMMARIZE_MAP_MAX_DOCS`
 - `SUMMARIZE_MAP_CHARS_PER_DOC`
+
+## 16) Phase 1 Exit Gate (Before Phase 2)
+Run this once before starting Phase 2 to freeze and verify the baseline.
+
+### A) Repeatable verification (PowerShell)
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify_phase1.ps1 `
+  -ApiUrl http://localhost:8000 `
+  -DriveFolderId <your_folder_id> `
+  -DriveEmail <your_google_email> `
+  -DriveDomain <your_domain> `
+  -DriveGroups HR
+```
+
+If you only want local checks:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify_phase1.ps1 -SkipDrive
+```
+
+### B) Create backups before auth changes
+```bash
+python scripts/backup_restore.py backup
+```
+Backup artifacts are written to `backups/<timestamp>/`:
+- `postgres.sql`
+- `manifest.json`
+- Qdrant snapshot files (`qdrant_<collection>_<name>.snapshot` when available)
+
+### C) Tag the Phase 1 baseline
+```bash
+git tag phase1-mvp
+git push origin phase1-mvp
+```
+
+### D) Secret hygiene quick check
+```bash
+git status --short --ignored
+```
+Confirm `.env` and `data/` remain ignored (`!!`).

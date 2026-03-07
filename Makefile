@@ -1,4 +1,4 @@
-.PHONY: up down logs test ingest-gdrive ingest-local load-test security-test backup restore
+﻿.PHONY: up down logs test ingest-gdrive ingest-local load-test security-test backup restore verify-phase1
 
 up:
 	docker compose up --build -d
@@ -29,3 +29,6 @@ backup:
 
 restore:
 	python scripts/backup_restore.py restore
+
+verify-phase1:
+	powershell -ExecutionPolicy Bypass -File scripts/verify_phase1.ps1
