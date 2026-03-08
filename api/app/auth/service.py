@@ -10,6 +10,10 @@ from app.auth.jwt_validator import JWTValidator
 from app.config import get_settings
 
 
+def _issuer_aliases(raw_aliases: str) -> list[str]:
+    return [value.strip() for value in raw_aliases.split(",") if value.strip()]
+
+
 async def resolve_entitlements(
     *,
     authorization_header: str | None,
@@ -24,7 +28,11 @@ async def resolve_entitlements(
         raise HTTPException(status_code=401, detail="Missing bearer token")
 
     token = authorization_header.split(" ", 1)[1].strip()
-    validator = JWTValidator(issuer=settings.keycloak_issuer, audience=settings.keycloak_audience)
+    validator = JWTValidator(
+        issuer=settings.keycloak_issuer,
+        audience=settings.keycloak_audience,
+        allowed_issuers=[settings.keycloak_issuer, *_issuer_aliases(settings.keycloak_issuer_aliases)],
+    )
     try:
         claims = await validator.validate(token)
     except Exception as exc:  # noqa: BLE001

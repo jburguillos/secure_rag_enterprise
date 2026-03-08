@@ -32,3 +32,7 @@ restore:
 
 verify-phase1:
 	powershell -ExecutionPolicy Bypass -File scripts/verify_phase1.ps1
+
+verify-phase2:
+	PowerShell -ExecutionPolicy Bypass -File scripts/verify_phase2.ps1
+

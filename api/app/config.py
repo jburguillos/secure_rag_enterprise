@@ -48,8 +48,9 @@ class AppSettings(BaseSettings):
     drive_group_map_json: str = "{}"
 
     auth_enabled: bool = False
-    keycloak_issuer: str = "http://localhost:8080/realms/secure-rag"
+    keycloak_issuer: str = "http://keycloak:8080/realms/secure-rag"
     keycloak_audience: str = "secure-rag-api"
+    keycloak_issuer_aliases: str = ""
 
     opa_url: str = "http://localhost:8181"
     opa_policy_path: str = "/v1/data/secure_rag/authz/allow"

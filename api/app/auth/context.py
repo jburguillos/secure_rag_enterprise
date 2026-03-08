@@ -1,8 +1,12 @@
-"""Authentication context models."""
+﻿"""Authentication context models."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+
+def _normalize_group(value: str) -> str:
+    return value.strip().lower().lstrip("/")
 
 
 @dataclass
@@ -19,7 +23,14 @@ class Entitlements:
     def from_claims(cls, claims: dict) -> "Entitlements":
         email = (claims.get("email") or "").lower() or None
         domain = email.split("@", 1)[1] if email and "@" in email else None
-        groups = [str(g).lower() for g in (claims.get("groups") or [])]
+
+        raw_groups = [str(g) for g in (claims.get("groups") or []) if g]
+        # Fallback for realms/clients that expose role claims instead of groups.
+        if not raw_groups:
+            realm_roles = ((claims.get("realm_access") or {}).get("roles") or [])
+            raw_groups.extend(str(role) for role in realm_roles if role)
+
+        groups = sorted({_normalize_group(g) for g in raw_groups if _normalize_group(g)})
         user_id = claims.get("sub") or claims.get("preferred_username")
         return cls(
             authenticated=True,
