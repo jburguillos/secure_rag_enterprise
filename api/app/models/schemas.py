@@ -102,3 +102,82 @@ class HealthResponse(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminDriveGroupMapRequest(BaseModel):
+    mapping: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class AdminDriveGroupMapResponse(BaseModel):
+    mapping: dict[str, list[str]] = Field(default_factory=dict)
+    source: Literal["env", "db"] = "env"
+
+
+class AdminAccessPreviewRequest(BaseModel):
+    principal: UserContext
+    sources: list[str] = Field(default_factory=list)
+    limit: int = 100
+
+
+class AdminPreviewDocument(BaseModel):
+    doc_id: str
+    source: str
+    title: str | None = None
+    mime_type: str | None = None
+    modified_time: datetime | None = None
+    permissions_summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminAccessPreviewResponse(BaseModel):
+    principal_groups: list[str] = Field(default_factory=list)
+    total_scanned: int
+    allowed_count: int
+    documents: list[AdminPreviewDocument] = Field(default_factory=list)
+
+
+class AdminGroup(BaseModel):
+    id: str
+    name: str
+    path: str | None = None
+
+
+class AdminGroupListResponse(BaseModel):
+    groups: list[AdminGroup] = Field(default_factory=list)
+
+
+class AdminUser(BaseModel):
+    id: str
+    username: str
+    email: str | None = None
+    enabled: bool = True
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class AdminUserListResponse(BaseModel):
+    users: list[AdminUser] = Field(default_factory=list)
+
+
+class AdminCreateUserRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    groups: list[str] = Field(default_factory=list)
+    first_name: str | None = None
+    last_name: str | None = None
+    enabled: bool = True
+
+
+class AdminCreateUserResponse(BaseModel):
+    user_id: str
+    username: str
+    groups: list[str] = Field(default_factory=list)
+
+
+class AdminSetUserGroupsRequest(BaseModel):
+    groups: list[str] = Field(default_factory=list)
+
+
+class AdminUserGroupsResponse(BaseModel):
+    user_id: str
+    groups: list[str] = Field(default_factory=list)

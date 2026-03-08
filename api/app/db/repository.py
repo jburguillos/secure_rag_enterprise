@@ -1,4 +1,4 @@
-"""Persistence helpers."""
+﻿"""Persistence helpers."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.orm import Session
 
 from app.db.models import (
+    AdminSettingRecord,
     DocumentRecord,
     FeedbackEventRecord,
     IngestionRunRecord,
@@ -192,3 +193,19 @@ def insert_feedback(session: Session, *, run_id: UUID, thumb: str, reason: str |
         )
     )
     return feedback_id
+
+
+def get_admin_setting(session: Session, key: str) -> Any | None:
+    rec = session.get(AdminSettingRecord, key)
+    if rec is None:
+        return None
+    return rec.value
+
+
+def upsert_admin_setting(session: Session, key: str, value: Any) -> None:
+    rec = session.get(AdminSettingRecord, key)
+    payload = _json_safe(value)
+    if rec is None:
+        session.add(AdminSettingRecord(key=key, value=payload))
+        return
+    rec.value = payload

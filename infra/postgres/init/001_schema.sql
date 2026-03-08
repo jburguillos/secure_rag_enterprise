@@ -1,4 +1,4 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+﻿CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE IF NOT EXISTS documents (
     doc_id TEXT PRIMARY KEY,
@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS documents (
     content_hash TEXT,
     permissions_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS admin_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -104,6 +111,11 @@ CREATE TRIGGER trg_documents_updated_at
 BEFORE UPDATE ON documents
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_admin_settings_updated_at ON admin_settings;
+CREATE TRIGGER trg_admin_settings_updated_at
+BEFORE UPDATE ON admin_settings
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE OR REPLACE FUNCTION prevent_table_mutation()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -145,3 +157,6 @@ CREATE TRIGGER trg_feedback_no_update BEFORE UPDATE ON feedback_events
 FOR EACH ROW EXECUTE FUNCTION prevent_table_mutation();
 CREATE TRIGGER trg_feedback_no_delete BEFORE DELETE ON feedback_events
 FOR EACH ROW EXECUTE FUNCTION prevent_table_mutation();
+
+
+

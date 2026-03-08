@@ -51,6 +51,13 @@ class AppSettings(BaseSettings):
     keycloak_issuer: str = "http://keycloak:8080/realms/secure-rag"
     keycloak_audience: str = "secure-rag-api"
     keycloak_issuer_aliases: str = ""
+    admin_authorized_groups: str = "admin"
+
+    keycloak_admin_url: str = "http://keycloak:8080"
+    keycloak_realm: str = "secure-rag"
+    keycloak_admin_user: str = "admin"
+    keycloak_admin_password: str = "admin"
+    keycloak_admin_client_id: str = "admin-cli"
 
     opa_url: str = "http://localhost:8181"
     opa_policy_path: str = "/v1/data/secure_rag/authz/allow"

@@ -1,4 +1,4 @@
-"""Secure RAG API entrypoint."""
+﻿"""Secure RAG API entrypoint."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.admin import router as admin_router
 from app.api.feedback import router as feedback_router
 from app.api.health import router as health_router
 from app.api.ingest import router as ingest_router
@@ -49,3 +50,4 @@ app.include_router(ingest_router)
 app.include_router(query_router)
 app.include_router(feedback_router)
 app.include_router(runs_router)
+app.include_router(admin_router)

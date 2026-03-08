@@ -294,3 +294,41 @@ Expected checks:
 - HR JWT cannot retrieve Finance-only doc
 - Finance JWT cannot retrieve HR-only doc
 - audit `run_id` generated for both
+
+## 18) Phase 2.5 Admin Console (Users, Groups, Mapping, Access Preview)
+The API now exposes secured admin endpoints under `/admin/*`.
+
+Prerequisites:
+- `AUTH_ENABLED=true`
+- admin token belongs to a group listed in `ADMIN_AUTHORIZED_GROUPS` (default: `admin`)
+- Keycloak admin service credentials configured:
+  - `KEYCLOAK_ADMIN_URL`
+  - `KEYCLOAK_REALM`
+  - `KEYCLOAK_ADMIN_USER`
+  - `KEYCLOAK_ADMIN_PASSWORD`
+  - `KEYCLOAK_ADMIN_CLIENT_ID`
+
+Default Admin test user (realm import):
+- `admin.user / ChangeMe123!`
+
+Admin endpoints:
+- `GET /admin/settings/drive-group-map`
+- `PUT /admin/settings/drive-group-map`
+- `POST /admin/access/preview`
+- `GET /admin/keycloak/groups`
+- `GET /admin/keycloak/users`
+- `POST /admin/keycloak/users`
+- `PUT /admin/keycloak/users/{user_id}/groups`
+- `POST /admin/sync/gdrive`
+
+Streamlit now includes an **Admin** tab for these operations.
+
+## 19) Drive ACL Sync Mode (Current vs Live)
+Current behavior:
+- Drive ACLs are captured at ingestion time and stored in payload metadata.
+- Query ACL enforcement is strict, but ACL freshness depends on re-ingestion.
+
+Production upgrade path for real-time ACL:
+- use Drive Changes API/webhooks to detect permission changes
+- enqueue delta re-index jobs for affected docs/chunks only
+- optionally enforce live policy checks against an entitlement cache

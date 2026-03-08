@@ -1,85 +1,106 @@
 ﻿{
-  "realm": "secure-rag",
-  "enabled": true,
-  "displayName": "Secure RAG MVP",
-  "registrationAllowed": false,
-  "resetPasswordAllowed": true,
-  "loginWithEmailAllowed": true,
-  "clients": [
-    {
-      "clientId": "secure-rag-api",
-      "enabled": true,
-      "publicClient": true,
-      "directAccessGrantsEnabled": true,
-      "standardFlowEnabled": true,
-      "redirectUris": [
-        "http://localhost:8501/*",
-        "http://ui:8501/*"
-      ],
-      "webOrigins": [
-        "*"
-      ],
-      "protocolMappers": [
-        {
-          "name": "groups",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-group-membership-mapper",
-          "consentRequired": false,
-          "config": {
-            "full.path": "false",
-            "id.token.claim": "true",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "true",
-            "claim.name": "groups"
-          }
-        }
-      ]
-    }
-  ],
-  "groups": [
-    {
-      "name": "HR"
-    },
-    {
-      "name": "Finance"
-    }
-  ],
-  "users": [
-    {
-      "username": "hr.user",
-      "firstName": "HR",
-      "lastName": "User",
-      "enabled": true,
-      "email": "hr.user@example.com",
-      "emailVerified": true,
-      "groups": [
-        "HR"
-      ],
-      "credentials": [
-        {
-          "type": "password",
-          "value": "ChangeMe123!",
-          "temporary": false
-        }
-      ]
-    },
-    {
-      "username": "finance.user",
-      "firstName": "Finance",
-      "lastName": "User",
-      "enabled": true,
-      "email": "finance.user@example.com",
-      "emailVerified": true,
-      "groups": [
-        "Finance"
-      ],
-      "credentials": [
-        {
-          "type": "password",
-          "value": "ChangeMe123!",
-          "temporary": false
-        }
-      ]
-    }
-  ]
+    "realm":  "secure-rag",
+    "enabled":  true,
+    "displayName":  "Secure RAG MVP",
+    "registrationAllowed":  false,
+    "resetPasswordAllowed":  true,
+    "loginWithEmailAllowed":  true,
+    "clients":  [
+                    {
+                        "clientId":  "secure-rag-api",
+                        "enabled":  true,
+                        "publicClient":  true,
+                        "directAccessGrantsEnabled":  true,
+                        "standardFlowEnabled":  true,
+                        "redirectUris":  [
+                                             "http://localhost:8501/*",
+                                             "http://ui:8501/*"
+                                         ],
+                        "webOrigins":  [
+                                           "*"
+                                       ],
+                        "protocolMappers":  [
+                                                {
+                                                    "name":  "groups",
+                                                    "protocol":  "openid-connect",
+                                                    "protocolMapper":  "oidc-group-membership-mapper",
+                                                    "consentRequired":  false,
+                                                    "config":  {
+                                                                   "full.path":  "false",
+                                                                   "id.token.claim":  "true",
+                                                                   "access.token.claim":  "true",
+                                                                   "userinfo.token.claim":  "true",
+                                                                   "claim.name":  "groups"
+                                                               }
+                                                }
+                                            ]
+                    }
+                ],
+    "groups":  [
+                   {
+                       "name":  "HR"
+                   },
+                   {
+                       "name":  "Finance"
+                   },
+                   {
+                       "name":  "Admin"
+                   }
+               ],
+    "users":  [
+                  {
+                      "username":  "hr.user",
+                      "firstName":  "HR",
+                      "lastName":  "User",
+                      "enabled":  true,
+                      "email":  "hr.user@example.com",
+                      "emailVerified":  true,
+                      "groups":  [
+                                     "HR"
+                                 ],
+                      "credentials":  [
+                                          {
+                                              "type":  "password",
+                                              "value":  "ChangeMe123!",
+                                              "temporary":  false
+                                          }
+                                      ]
+                  },
+                  {
+                      "username":  "finance.user",
+                      "firstName":  "Finance",
+                      "lastName":  "User",
+                      "enabled":  true,
+                      "email":  "finance.user@example.com",
+                      "emailVerified":  true,
+                      "groups":  [
+                                     "Finance"
+                                 ],
+                      "credentials":  [
+                                          {
+                                              "type":  "password",
+                                              "value":  "ChangeMe123!",
+                                              "temporary":  false
+                                          }
+                                      ]
+                  },
+                  {
+                      "username":  "admin.user",
+                      "firstName":  "Admin",
+                      "lastName":  "User",
+                      "enabled":  true,
+                      "email":  "admin.user@example.com",
+                      "emailVerified":  true,
+                      "groups":  [
+                                     "Admin"
+                                 ],
+                      "credentials":  [
+                                          {
+                                              "type":  "password",
+                                              "value":  "ChangeMe123!",
+                                              "temporary":  false
+                                          }
+                                      ]
+                  }
+              ]
 }
