@@ -18,6 +18,6 @@ class VLMRouter:
         self.enabled = enabled
 
     async def maybe_route(self, prompt: str, image_paths: list[str]) -> VLMResult:
-        if not self.enabled:
+        if not self.enabled or not image_paths:
             return VLMResult(used_vlm=False, answer="")
         return VLMResult(used_vlm=True, answer="VLM response placeholder")

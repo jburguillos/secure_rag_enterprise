@@ -1,4 +1,4 @@
-﻿"""Application configuration and settings."""
+"""Application configuration and settings."""
 
 from __future__ import annotations
 
@@ -34,8 +34,11 @@ class AppSettings(BaseSettings):
     llm_provider: str = "ollama"
     embedding_provider: str = "ollama"
     ollama_base_url: str = "http://localhost:11434"
-    ollama_chat_model: str = "llama3.1:8b"
+    ollama_chat_model: str = "llama3.2:3b"
     ollama_embed_model: str = "nomic-embed-text"
+    embedding_batch_size: int = 16
+    vlm_router: str = "disabled"
+    vlm_router_max_images: int = 6
 
     public_llm_base_url: str | None = None
     public_llm_api_key: str | None = None
@@ -46,6 +49,7 @@ class AppSettings(BaseSettings):
     google_service_account_json: str | None = None
     drive_folder_id: str = ""
     drive_group_map_json: str = "{}"
+    google_drive_use_reader: bool = False
 
     auth_enabled: bool = False
     keycloak_issuer: str = "http://keycloak:8080/realms/secure-rag"
@@ -75,13 +79,31 @@ class AppSettings(BaseSettings):
     max_context_chars: int = 12000
     generation_max_evidence_nodes: int = 4
     generation_doc_diversity_max_chunks: int = 1
+    enable_answerability_judge: bool = True
+    answerability_use_llm: bool = True
+    answerability_max_evidence_nodes: int = 6
+    answerability_max_chars_per_node: int = 900
 
     summarize_map_max_docs: int = 6
     summarize_map_chars_per_doc: int = 700
+    tabular_rows_per_block: int = 25
+    tabular_max_columns: int = 20
+    tabular_max_cell_chars: int = 200
+    tabular_max_blocks_per_sheet: int = 200
+    tabular_max_sheets_per_workbook: int = 50
+    generation_tabular_max_blocks_per_sheet: int = 2
 
     require_citations: bool = True
     min_citations: int = 1
     refusal_text: str = "I do not have enough authorized evidence to answer that."
+    llm_unavailable_text: str = (
+        "The local chat model is unavailable on this machine. Switch to a smaller Ollama model or check local memory."
+    )
+    domain_context_hint: str = (
+        "The indexed corpus often simulates an internal venture capital fund operating model, "
+        "including fundraising, LP commitments, capital calls, due diligence, portfolio management, "
+        "market research, legal/compliance, and board reporting workflows."
+    )
 
     local_ingest_root: str = "./tests/data/sample_docs"
     local_acl_sidecar: str = "./tests/data/sample_docs/acl_map.yaml"

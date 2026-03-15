@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import select
 
 from app.admin.authz import require_admin_entitlements
@@ -27,12 +29,28 @@ from app.models.schemas import (
     AdminUser,
     AdminUserGroupsResponse,
     AdminUserListResponse,
+    IngestAcceptedResponse,
     IngestGDriveRequest,
     IngestResponse,
 )
 from app.retrieval.acl import payload_access_allowed
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
+
+
+def _run_admin_gdrive_ingest_job(run_id, request: IngestGDriveRequest) -> None:
+    try:
+        service = IngestionService()
+        service.ingest_gdrive(
+            folder_id=request.folder_id,
+            auth_mode=request.auth_mode,
+            dry_run=request.dry_run,
+            dataset_source=request.dataset_source,
+            run_id=run_id,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Async admin Google Drive sync failed for run_id=%s", run_id)
 
 
 @router.get("/settings/drive-group-map", response_model=AdminDriveGroupMapResponse)
@@ -175,3 +193,18 @@ def sync_gdrive(
         dry_run=request.dry_run,
         dataset_source=request.dataset_source,
     )
+
+
+@router.post("/sync/gdrive/async", response_model=IngestAcceptedResponse, status_code=202)
+def sync_gdrive_async(
+    request: IngestGDriveRequest,
+    background_tasks: BackgroundTasks,
+    _admin: Entitlements = Depends(require_admin_entitlements),
+) -> IngestAcceptedResponse:
+    run_id = IngestionService.start_ingestion_run(
+        source="google_drive",
+        dataset_source=request.dataset_source,
+        metadata={"folder_id": request.folder_id, "auth_mode": request.auth_mode, "async": True, "admin_sync": True},
+    )
+    background_tasks.add_task(_run_admin_gdrive_ingest_job, run_id, request)
+    return IngestAcceptedResponse(ingestion_run_id=run_id, status="running")

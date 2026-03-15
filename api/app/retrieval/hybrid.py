@@ -165,3 +165,25 @@ class RetrievalService:
             text_evidence=text_hits,
             image_evidence=image_hits,
         )
+
+    def retrieve_inventory(
+        self,
+        entitlements: Entitlements,
+        *,
+        query_filters: QueryFilters | None = None,
+        limit: int = 5000,
+    ) -> list[RetrievedNode]:
+        """Return metadata-bearing text nodes for corpus inventory style queries.
+
+        This bypasses semantic ranking and scrolls authorized nodes so the caller can
+        answer from document metadata (titles, paths, mime types) rather than chunk text.
+        """
+
+        metadata_filter = build_metadata_filter(query_filters)
+        acl = build_acl_filter(entitlements)
+        query_filter = combine_filters(acl, metadata_filter)
+        return self.qdrant.filtered_scroll(
+            self.settings.qdrant_text_collection,
+            acl_filter=query_filter,
+            limit=max(1, limit),
+        )

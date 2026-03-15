@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import timezone
+import re
 
 from qdrant_client.models import DatetimeRange, FieldCondition, Filter, MatchAny, MatchValue
 
@@ -11,6 +12,25 @@ from app.models.schemas import QueryFilters
 
 def _normalize_many(values: list[str] | None) -> list[str]:
     return sorted({v.strip() for v in (values or []) if v and v.strip()})
+
+
+def _normalize_path(value: str | None) -> str:
+    if not value:
+        return ""
+    cleaned = str(value).replace("\\", "/").strip()
+    cleaned = re.sub(r"/{2,}", "/", cleaned).strip("/")
+    return cleaned
+
+
+def _normalize_path_many(values: list[str] | None) -> list[str]:
+    normalized: set[str] = set()
+    for raw in values or []:
+        cleaned = _normalize_path(raw)
+        if not cleaned:
+            continue
+        normalized.add(cleaned)
+        normalized.add(cleaned.lower())
+    return sorted(normalized)
 
 
 def build_metadata_filter(filters: QueryFilters | None) -> Filter | None:
@@ -37,6 +57,31 @@ def build_metadata_filter(filters: QueryFilters | None) -> Filter | None:
     if tags:
         tag_should = [FieldCondition(key="tags", match=MatchValue(value=tag)) for tag in tags]
         must.append(Filter(should=tag_should))
+
+    folder_prefixes = _normalize_path_many(filters.folder_prefixes)
+    if folder_prefixes:
+        folder_prefixes_lower = sorted({prefix.lower() for prefix in folder_prefixes})
+        must.append(
+            Filter(
+                should=[
+                    FieldCondition(key="folder_ancestors", match=MatchAny(any=folder_prefixes_lower)),
+                    FieldCondition(key="folder_path", match=MatchAny(any=folder_prefixes)),
+                ]
+            )
+        )
+
+    path_prefixes = _normalize_path_many(filters.path_prefixes)
+    if path_prefixes:
+        path_prefixes_lower = sorted({prefix.lower() for prefix in path_prefixes})
+        must.append(
+            Filter(
+                should=[
+                    FieldCondition(key="path_ancestors", match=MatchAny(any=path_prefixes_lower)),
+                    FieldCondition(key="drive_path", match=MatchAny(any=path_prefixes)),
+                    FieldCondition(key="source_path", match=MatchAny(any=path_prefixes)),
+                ]
+            )
+        )
 
     modified_from = filters.modified_from
     modified_to = filters.modified_to

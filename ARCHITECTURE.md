@@ -12,10 +12,10 @@
 ## Data Flow
 1. Ingestion
 - Google Drive via LlamaHub `GoogleDriveReader` (OAuth default).
-- Supported files: Google Docs, PDF, DOCX, TXT.
+- Supported files: Google Docs, Google Sheets (exported to XLSX), PDF, DOCX, TXT, XLSX.
 - Metadata + permissions extracted and attached to each node.
 - Text nodes chunked and embedded into Qdrant `text_nodes`.
-- PDF image nodes (local fallback and phase-3 path) embedded into `image_nodes`.
+- PDF page renders + embedded images (local and Google Drive PDFs) embedded into `image_nodes` (optional OCR text attached per image node).
 - Document registry/upsert persisted in Postgres.
 
 2. Query
@@ -42,6 +42,8 @@
 - Public LLM APIs disabled by default.
 
 ## Upgrade Paths
-- GPU VLM routing interface placeholder for future multimodal synthesis.
+- VLM router hook is integrated in generation and remains disabled by default (`VLM_ROUTER=disabled`).
+- GPU VLM backend can replace the no-op router without API contract changes.
 - Service-account/domain delegation for Google Workspace later.
 - Replace Streamlit with Next.js without API contract changes.
+

@@ -1,4 +1,4 @@
-﻿"""Runtime admin settings storage (DB-backed with env fallback)."""
+"""Runtime admin settings storage (DB-backed with env fallback)."""
 
 from __future__ import annotations
 
@@ -59,20 +59,21 @@ def _read_db_drive_group_map() -> dict[str, list[str]] | None:
 def read_drive_group_map() -> tuple[dict[str, list[str]], str]:
     """Return effective mapping and source marker (`db` or `env`).
 
-    Non-empty env mapping intentionally overrides DB mapping to keep local/test
-    behavior deterministic and allow explicit env overrides.
+    Behavior:
+    - Non-default env JSON overrides DB (`DRIVE_GROUP_MAP_JSON` not empty and not `{}`).
+    - Empty/default env JSON falls back to DB mapping.
     """
 
     settings = get_settings()
-    env_mapping = parse_drive_group_map_json(settings.drive_group_map_json)
-    if env_mapping:
-        return env_mapping, "env"
+    raw_env = (settings.drive_group_map_json or "").strip()
+    if raw_env and raw_env != "{}":
+        return parse_drive_group_map_json(raw_env), "env"
 
     db_mapping = _read_db_drive_group_map()
     if db_mapping is not None:
         return db_mapping, "db"
 
-    return env_mapping, "env"
+    return {}, "env"
 
 
 def get_effective_drive_group_map() -> dict[str, list[str]]:

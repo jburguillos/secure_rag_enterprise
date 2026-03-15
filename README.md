@@ -1,4 +1,4 @@
-﻿# Secure Multimodal RAG Enterprise MVP
+# Secure Multimodal RAG Enterprise MVP
 
 Production-oriented, locally deployable secure multimodal RAG MVP with:
 - FastAPI backend (`/ingest`, `/query`, `/feedback`, `/runs`)
@@ -10,13 +10,18 @@ Production-oriented, locally deployable secure multimodal RAG MVP with:
 - Local-folder ingestion fallback
 - CPU-first local inference path (Ollama)
 
+Supported content types in the current MVP:
+- local: `txt`, `md`, `pdf`, `docx`, `xlsx`
+- Google Drive: Google Docs, Google Sheets, `pdf`, `docx`, `txt`, `xlsx`
+- excluded in this iteration: `csv`, legacy `xls`, spreadsheet charts/embedded objects, macros/VBA
+
 ## Implemented Scope
 This repository is scaffolded and implemented across the planned phases in a single MVP baseline:
 1. Phase 0 scaffold + compose stack
 2. Phase 1 Google Drive first vertical slice (ingest -> index -> query -> citations)
 3. Phase 2 auth/policy/audit wiring
 4. Phase 3 multimodal PDF page image extraction + optional OCR
-5. Phase 4 multimodal retrieval fusion + VLM routing placeholder
+5. Phase 4 multimodal retrieval fusion + optional VLM routing hook (disabled by default)
 6. Phase 5 hardening scripts (metrics, load test, backup/restore, red-team regression)
 
 ## Repository Layout
@@ -72,8 +77,17 @@ curl http://localhost:8000/health/readiness
 5. First run generates `token.json` at `GOOGLE_TOKEN_PATH`; never commit it.
 
 Note: `DRIVE_AUTH_MODE=oauth` is default. `service_account` remains available as fallback.
+For large recursive ingests, the API uses the native Drive downloader by default (`GOOGLE_DRIVE_USE_READER=false`) because the LlamaHub `GoogleDriveReader` path is significantly slower on big folder trees. The reader path remains available as an explicit compatibility option.
 
 ## 5) Ingest Google Drive
+Drive ingestion is recursive from the provided root folder:
+- supported files inside nested subfolders are ingested automatically
+- unsupported files are skipped with logs
+- document metadata preserves relative Drive path via `drive_path`, `folder_path`, `root_folder_id`
+- ingestion stores `folder_ancestors` and `path_ancestors` for retrieval-time folder/path filtering in Qdrant
+- Google Sheets are exported to `xlsx` through Drive API and parsed through the same tabular pipeline as Excel workbooks
+- Streamlit UI uses async ingestion + polling so long-running Drive jobs do not fail on request timeout
+
 ### Make target
 ```bash
 make ingest-gdrive FOLDER_ID=<drive_folder_id>
@@ -83,6 +97,14 @@ make ingest-gdrive FOLDER_ID=<drive_folder_id>
 ```powershell
 python scripts/ingest_gdrive.py --folder-id <drive_folder_id> --auth-mode oauth --api-url http://localhost:8000
 ```
+
+### Async ingestion endpoints
+For UI or custom clients that should not wait on a long-running HTTP request:
+- `POST /ingest/gdrive/async`
+- `POST /ingest/local/async`
+- `GET /ingest/runs/{ingestion_run_id}`
+
+The async start endpoint returns immediately with `ingestion_run_id`; clients should poll the run-status endpoint until `status != running`.
 
 ## 6) Local Folder Fallback Ingestion
 ```bash
@@ -94,6 +116,13 @@ or
 python scripts/ingest_local.py --path ./tests/data/sample_docs --acl-sidecar ./tests/data/sample_docs/acl_map.yaml --api-url http://localhost:8000
 ```
 
+Local `xlsx` workbooks are parsed into:
+- one workbook summary node
+- one sheet summary node per non-empty sheet
+- row-block nodes (`rows_per_block=25` by default)
+
+Hidden sheets are indexed and marked with `sheet_hidden=true`. Empty sheets are skipped.
+
 ## 7) Query API Example
 ```bash
 curl -X POST http://localhost:8000/query \
@@ -101,6 +130,7 @@ curl -X POST http://localhost:8000/query \
   -d '{
     "query":"Summarize the public handbook",
     "mode":"qa",
+    "retrieval_mode":"auto",
     "include_images":true,
     "user_context":{"email":"hr.user@example.com","domain":"example.com","groups":["hr"]}
   }'
@@ -108,9 +138,37 @@ curl -X POST http://localhost:8000/query \
 
 Expected:
 - `run_id`
-- grounded `answer`
-- `citations[]` with `doc/page/chunk/node`
+- grounded `answer` (with citation markers like `[1]` when factual)
+- `citations[]` filtered to only citations actually referenced in the answer
 - `policy_decision`
+
+### Conversational turns (no retrieval)
+Short acknowledgements (for example `Sounds good!`, `Thanks`, `Hola`) are handled as chat turns.
+- no vector retrieval
+- no evidence/citation requirement
+- still audited with policy reason `auto_smalltalk`
+
+Retrieval mode options in `/query`:
+- `auto` (default): route between chat and grounded retrieval based on the current turn plus recent chat history
+- `rag`: always retrieve evidence and enforce grounding/citations
+- `chat`: never retrieve; respond with the local LLM (Ollama), using chat history context
+- UI keeps a separate conversation context per mode (`auto`, `rag`, `chat`) to avoid cross-mode contamination
+
+Follow-up handling:
+- send `chat_history` (recent `{role, content}` turns) and API rewrites short follow-ups (for example `And in 2008?`) into standalone retrieval queries.
+
+Evidence sufficiency gate:
+- after retrieval, the API runs an answerability check over the top evidence candidates
+- it prefers a local LLM judge and falls back to heuristics if the judge is disabled or unavailable
+- only judged supporting nodes are sent to generation
+- if the evidence is not sufficient to answer with citations, the API either refuses or returns a clarification prompt with likely document candidates when it can narrow the request safely
+- clarification fallback is metadata-driven: it suggests likely authorized files (for example commitment registers, schedules, or FAQs) and proposes narrower follow-up prompts instead of fabricating an answer
+- natural-language constraints such as `Drive PDFs` are converted into structured retrieval filters (`sources=["google_drive"]`, `mime_types=["application/pdf",".pdf"]`) before search
+- path constraints are supported in natural language (for example `use only 03_Portfolio/CliniFlow`) and translated into retrieval-time filters using indexed `folder_ancestors` / `path_ancestors`
+- low-value image hits without useful OCR/extracted text are dropped before answerability/generation so the model does not cite placeholder visual content
+- spreadsheet/excel/google-sheet hints are translated into structured retrieval filters before search
+- tabular citations include `sheet_name`, `row_start`, `row_end`, and `cell_range` when the answer is grounded in workbook evidence
+- inventory-style questions (`what files do you have`, `list exact indexed file names`) are answered from indexed document metadata instead of semantic chunk content
 
 ## 8) Keycloak Login (Phase 2)
 Imported realm: `secure-rag`
@@ -121,6 +179,22 @@ Groups:
 - `Finance`
 
 Set `AUTH_ENABLED=true` in `.env` to enforce JWT validation.
+### Streamlit Auto Token Refresh
+The UI now supports Keycloak login directly in the sidebar (`Auth (Keycloak)`):
+- click `Login` with Keycloak username/password
+- access token + refresh token are stored in Streamlit session state
+- token refresh is attempted automatically before expiry and retried once on `401`
+- optional manual override remains available in `Manual bearer token`
+
+Relevant env vars:
+- `KEYCLOAK_CLIENT_ID` (default `secure-rag-api`)
+- `KEYCLOAK_TOKEN_URL` (default `<issuer>/protocol/openid-connect/token`)
+- `UI_QUERY_TIMEOUT_SEC` (default `300`)
+- `UI_TOKEN_REFRESH_SKEW_SEC` (default `30`)
+- `UI_DEFAULT_USERNAME` / `UI_DEFAULT_PASSWORD` (optional local defaults)
+- `DOMAIN_CONTEXT_HINT` (optional domain orientation injected into system prompts; factual answers still require retrieved evidence + citations)
+- `VLM_ROUTER` (`disabled` by default; set non-disabled value to activate VLM router hook)
+- `VLM_ROUTER_MAX_IMAGES` (max image paths passed to VLM router per answer)
 
 ### Keycloak Group -> Drive Group Mapping
 When Drive files are shared with Google Groups (for example `hr-shared@enterprise.com`), map IdP groups to Drive ACL groups:
@@ -187,9 +261,10 @@ python scripts/backup_restore.py restore
   ```
 - Pull required local models explicitly (first-time network use):
   ```bash
-  docker compose exec ollama ollama pull llama3.1:8b
+  docker compose exec ollama ollama pull llama3.2:3b
   docker compose exec ollama ollama pull nomic-embed-text
   ```
+- `llama3.2:3b` is the default CPU-first chat model. Use a larger model such as `llama3.1:8b` only when local memory allows it.
 - In production environments, pre-stage model artifacts and keep outbound egress disabled.
 
 
@@ -198,8 +273,17 @@ python scripts/backup_restore.py restore
 The query pipeline now includes:
 - broad candidate retrieval + optional local reranking (`ENABLE_RERANK=true`)
 - doc-diversity caps to avoid one file dominating context
-- map-reduce summarization path for multi-document summaries
+- map-reduce summarization path for explicit per-document summaries; otherwise summaries default to an integrated synthesis that only cites documents actually used
 - metadata filters in `/query` (`source`, `mime_types`, `doc_ids`, `tags`, `modified_from`, `modified_to`)
+- query-to-filter extraction for common hints like `Drive PDFs`, `local files`, `docx`, and `txt`
+- query-to-filter extraction for `excel`, `xlsx`, `spreadsheet`, `workbook`, `sheet`, and `google sheets`
+- page-aware PDF chunking plus title/page-enriched text embeddings for better recall
+- workbook-aware chunking for `xlsx` / Google Sheets:
+  - workbook summary
+  - sheet summary
+  - row blocks with headers and row ranges
+- smaller default chunks to improve precision on fact-style questions
+- merge of tiny trailing fragments to avoid low-value micro-chunks
 
 Example filtered query (Drive-only PDFs modified after Jan 1, 2026):
 ```bash
@@ -229,6 +313,50 @@ Tuning knobs (`.env`):
 - `GENERATION_DOC_DIVERSITY_MAX_CHUNKS`
 - `SUMMARIZE_MAP_MAX_DOCS`
 - `SUMMARIZE_MAP_CHARS_PER_DOC`
+- `ANSWERABILITY_ENABLED`
+- `ANSWERABILITY_USE_LLM`
+- `ANSWERABILITY_MAX_EVIDENCE_NODES`
+- `ANSWERABILITY_MAX_CHARS_PER_NODE`
+
+Chunking defaults live in `config/config.yml`:
+- `chunk_size: 450`
+- `chunk_overlap: 80`
+- `min_chunk_chars: 180`
+
+Tabular defaults:
+- `tabular.rows_per_block: 25`
+- `tabular.max_columns: 20`
+- `tabular.max_cell_chars: 200`
+- `tabular.max_blocks_per_sheet: 200`
+- `tabular.max_sheets_per_workbook: 50`
+- `summarization.tabular_max_blocks_per_sheet: 2`
+
+After changing chunking settings, re-ingest documents so Qdrant stores the new node layout.
+
+Tabular query examples:
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query":"What spreadsheets about revenue or portfolio performance do you have?",
+    "mode":"qa",
+    "retrieval_mode":"rag",
+    "include_images":false,
+    "user_context":{"email":"hr.user@example.com","domain":"example.com","groups":["hr"]}
+  }'
+```
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query":"In pipeline_metrics.xlsx, summarize the Revenue sheet with citations.",
+    "mode":"summarize",
+    "retrieval_mode":"rag",
+    "include_images":false,
+    "user_context":{"email":"hr.user@example.com","domain":"example.com","groups":["hr"]}
+  }'
+```
 
 ## 16) Phase 1 Exit Gate (Before Phase 2)
 Run this once before starting Phase 2 to freeze and verify the baseline.
@@ -332,3 +460,72 @@ Production upgrade path for real-time ACL:
 - use Drive Changes API/webhooks to detect permission changes
 - enqueue delta re-index jobs for affected docs/chunks only
 - optionally enforce live policy checks against an entitlement cache
+
+## 20) Phase 3 Verification (Multimodal Ingestion)
+Phase 3 adds PDF page-image plus embedded-image extraction for both:
+- local PDF ingestion
+- Google Drive PDF ingestion
+
+Multimodal image nodes now also preserve:
+- `visual_text_source` = `ocr` | `page_text` | `placeholder`
+- OCR quality metadata (`ocr_char_count`, `ocr_token_count`, `has_useful_ocr`)
+- page-level linkage back to text chunks (`linked_text_node_ids`, `linked_chunk_ids`, `linked_text_preview`)
+
+Behavior notes:
+- when OCR is disabled or empty, page images fall back to the PDF page text for indexing context
+- low-value image hits with no useful OCR/page text are excluded before answerability/generation
+- this keeps image retrieval usable on CPU while avoiding placeholder visual claims
+
+Ingestion responses now include:
+- `text_nodes_indexed`
+- `image_nodes_indexed`
+
+Run Phase 3 tests:
+```bash
+docker compose exec api pytest -q tests -k "multimodal_ingest or ocr"
+```
+
+Verify Drive PDF image indexing (folder must include at least one PDF):
+```powershell
+$body = @{
+  folder_id = "<drive_folder_id>"
+  auth_mode = "oauth"
+  dry_run = $false
+  dataset_source = "google_drive"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8000/ingest/gdrive `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+Expected:
+- `added` >= 1
+- `text_nodes_indexed` >= 1
+- `image_nodes_indexed` >= 1 (if PDFs exist)
+
+Optional multimodal query smoke test:
+```powershell
+$q = @{
+  query = "Summarize visual and textual evidence from Drive PDFs with citations."
+  mode = "summarize"
+  include_images = $true
+  top_k = 12
+  filters = @{ sources = @("google_drive"); mime_types = @("application/pdf") }
+  user_context = @{ email = "<your_email>"; domain = "<your_domain>"; groups = @("HR") }
+}
+Invoke-RestMethod -Method Post `
+  -Uri http://localhost:8000/query `
+  -ContentType "application/json" `
+  -Body ($q | ConvertTo-Json -Depth 12)
+```
+
+
+
+
+
+
+
+
+

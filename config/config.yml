@@ -1,4 +1,4 @@
-﻿app:
+app:
   config_version: "1.0"
   no_outbound_default: true
   require_citations: true
@@ -17,12 +17,27 @@ retrieval:
   rrf_k: 60
 
 chunking:
-  chunk_size: 800
-  chunk_overlap: 120
+  chunk_size: 450
+  chunk_overlap: 80
+  min_chunk_chars: 180
+
+tabular:
+  rows_per_block: 25
+  max_columns: 20
+  max_cell_chars: 200
+  max_blocks_per_sheet: 200
+  max_sheets_per_workbook: 50
 
 summarization:
   map_max_docs: 6
   map_chars_per_doc: 700
+  tabular_max_blocks_per_sheet: 2
+
+answerability:
+  enabled: true
+  use_llm: true
+  max_evidence_nodes: 6
+  max_chars_per_node: 900
 
 multimodal:
   enable_ocr: false
@@ -31,10 +46,12 @@ multimodal:
 
 models:
   llm_provider: ollama
-  llm_model: llama3.1:8b
+  llm_model: llama3.2:3b
   embedding_provider: ollama
   embedding_model: nomic-embed-text
+  embedding_batch_size: 16
   vlm_router: disabled
+  vlm_router_max_images: 6
 
 security:
   auth_enabled: false

@@ -22,6 +22,11 @@ class Citation(BaseModel):
     doc_id: str
     doc_name: str | None = None
     page: int | None = None
+    sheet_name: str | None = None
+    cell_range: str | None = None
+    row_start: int | None = None
+    row_end: int | None = None
+    tabular_node_type: str | None = None
     chunk_id: str | None = None
     node_id: str
     modality: Literal["text", "image"] = "text"
@@ -48,7 +53,31 @@ class IngestResponse(BaseModel):
     updated: int
     deleted: int
     skipped: int
+    text_nodes_indexed: int = 0
+    image_nodes_indexed: int = 0
     errors: list[str] = Field(default_factory=list)
+
+
+class IngestAcceptedResponse(BaseModel):
+    ingestion_run_id: UUID
+    status: Literal["running"] = "running"
+
+
+class IngestionRunStatusResponse(BaseModel):
+    ingestion_run_id: UUID
+    source: str
+    dataset_source: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str
+    added: int = 0
+    updated: int = 0
+    deleted: int = 0
+    skipped: int = 0
+    text_nodes_indexed: int = 0
+    image_nodes_indexed: int = 0
+    errors: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class QueryFilters(BaseModel):
@@ -56,16 +85,25 @@ class QueryFilters(BaseModel):
     mime_types: list[str] = Field(default_factory=list)
     doc_ids: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    folder_prefixes: list[str] = Field(default_factory=list)
+    path_prefixes: list[str] = Field(default_factory=list)
     modified_from: datetime | None = None
     modified_to: datetime | None = None
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant", "system"]
+    content: str
 
 
 class QueryRequest(BaseModel):
     query: str
     mode: Literal["qa", "summarize"] = "qa"
+    retrieval_mode: Literal["auto", "rag", "chat"] = "auto"
     top_k: int | None = None
     include_images: bool = True
     filters: QueryFilters | None = None
+    chat_history: list[ChatMessage] = Field(default_factory=list)
     user_context: UserContext | None = None
 
 

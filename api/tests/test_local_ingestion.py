@@ -7,8 +7,9 @@ from app.ingestion.local_connector import load_local_documents
 
 def test_local_ingestion_acl_sidecar(tmp_path: Path) -> None:
     docs_dir = tmp_path / "docs"
-    docs_dir.mkdir(parents=True)
-    (docs_dir / "sample.txt").write_text("hello secure rag", encoding="utf-8")
+    nested_dir = docs_dir / "03_Portfolio" / "CliniFlow"
+    nested_dir.mkdir(parents=True)
+    (nested_dir / "sample.txt").write_text("hello secure rag", encoding="utf-8")
 
     acl_path = tmp_path / "acl.yaml"
     acl_path.write_text(
@@ -22,3 +23,7 @@ def test_local_ingestion_acl_sidecar(tmp_path: Path) -> None:
     md = docs[0].metadata or {}
     assert md.get("allowed_domains") == ["corp.com"]
     assert md.get("is_public") is False
+    assert md.get("drive_path") == "03_Portfolio/CliniFlow/sample.txt"
+    assert md.get("folder_path") == "03_Portfolio/CliniFlow"
+    assert "03_portfolio/cliniflow" in (md.get("folder_ancestors") or [])
+    assert "03_portfolio/cliniflow/sample.txt" in (md.get("path_ancestors") or [])

@@ -20,6 +20,8 @@ def test_build_metadata_filter_with_fields() -> None:
         mime_types=["application/pdf"],
         doc_ids=["doc-123"],
         tags=["finance"],
+        folder_prefixes=["03_Portfolio/CliniFlow"],
+        path_prefixes=["03_Portfolio/CliniFlow/Reporting"],
         modified_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
         modified_to=datetime(2026, 12, 31, tzinfo=timezone.utc),
     )
@@ -34,7 +36,8 @@ def test_build_metadata_filter_with_fields() -> None:
     assert "mimeType" in keys
     assert "doc_id" in keys
     assert "modifiedTime" in keys
-    assert any(isinstance(item, Filter) and item.should for item in must)
+    should_filters = [item for item in must if isinstance(item, Filter) and item.should]
+    assert len(should_filters) >= 3
 
 
 def test_combine_filters_wraps_acl_and_metadata() -> None:

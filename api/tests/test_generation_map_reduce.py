@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import pytest
 
@@ -46,5 +46,6 @@ async def test_summarize_mode_uses_map_reduce_prompt(monkeypatch) -> None:
     )
 
     assert result.refusal_reason is None
-    assert "Per-document map summaries" in captured["prompt"]
+    assert result.used_citation_indices == [1, 2]
+    assert "Grouped evidence summaries are provided below." in captured["prompt"]
     assert "Map blocks:" in captured["prompt"]
