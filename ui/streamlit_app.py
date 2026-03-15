@@ -12,8 +12,17 @@ import requests
 import streamlit as st
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000").rstrip("/")
 DEFAULT_DRIVE_FOLDER_ID = os.getenv("DRIVE_FOLDER_ID", "")
+DEFAULT_LOCAL_PATH = os.getenv("UI_DEFAULT_LOCAL_PATH", "./tests/data/sample_docs")
+DEFAULT_LOCAL_ACL = os.getenv("UI_DEFAULT_LOCAL_ACL", "./tests/data/sample_docs/acl_map.yaml")
 UI_QUERY_TIMEOUT_SEC = int(os.getenv("UI_QUERY_TIMEOUT_SEC", "300"))
 UI_INGEST_POLL_INTERVAL_SEC = float(os.getenv("UI_INGEST_POLL_INTERVAL_SEC", "2"))
 UI_INGEST_POLL_TIMEOUT_SEC = int(os.getenv("UI_INGEST_POLL_TIMEOUT_SEC", "1800"))
@@ -23,8 +32,161 @@ KEYCLOAK_TOKEN_URL = os.getenv("KEYCLOAK_TOKEN_URL", f"{KEYCLOAK_ISSUER}/protoco
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "secure-rag-api")
 DEFAULT_AUTH_USERNAME = os.getenv("UI_DEFAULT_USERNAME", "")
 DEFAULT_AUTH_PASSWORD = os.getenv("UI_DEFAULT_PASSWORD", "")
+AUTH_ENABLED = _bool_env("AUTH_ENABLED", False)
+UI_REQUIRE_LOGIN = _bool_env("UI_REQUIRE_LOGIN", AUTH_ENABLED)
 
-st.set_page_config(page_title="Secure RAG MVP", layout="wide")
+st.set_page_config(page_title="Catalyst Iberia Ventures | Secure Copilot", layout="wide", initial_sidebar_state="expanded")
+
+
+def _inject_css() -> None:
+    # Palette extracted from pluspartners_brandguidelines_2024.pdf
+    st.markdown(
+        """
+<style>
+:root {
+    --pp-ink: #203044;
+    --pp-ink-soft: #30485f;
+    --pp-slate: #8898A8;
+    --pp-slate-light: #a8bcc8;
+    --pp-accent: #E0582C;
+    --pp-bg: #f0f0e8;
+    --pp-surface: #ffffff;
+    --pp-border: #d7dee5;
+}
+html, body, [class*="css"] {
+    font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", "Segoe UI", sans-serif;
+}
+.stApp {
+    background: radial-gradient(circle at top right, #f8f6ef 0%, #f0f0e8 45%, #edf2f6 100%);
+    color: var(--pp-ink);
+}
+[data-testid="stSidebar"] {
+    background: linear-gradient(185deg, #1d2d3f 0%, #223549 60%, #2c4258 100%);
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+[data-testid="stSidebar"] * {
+    color: #eef2f7;
+}
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255, 255, 255, 0.18);
+}
+.pp-brand-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+    margin-bottom: 0.2rem;
+}
+.pp-brand-subtitle {
+    font-size: 0.86rem;
+    color: #d8e3ed;
+    margin-bottom: 0.9rem;
+}
+.pp-page-title {
+    font-size: 2rem;
+    font-weight: 750;
+    color: var(--pp-ink);
+    margin-bottom: 0.1rem;
+}
+.pp-page-subtitle {
+    color: var(--pp-ink-soft);
+    margin-bottom: 1rem;
+}
+.pp-kpi {
+    border: 1px solid var(--pp-border);
+    border-radius: 14px;
+    padding: 0.75rem 0.9rem;
+    background: rgba(255, 255, 255, 0.82);
+}
+.pp-kpi-label {
+    color: var(--pp-ink-soft);
+    font-size: 0.82rem;
+    margin-bottom: 0.2rem;
+}
+.pp-kpi-value {
+    color: var(--pp-ink);
+    font-size: 1.02rem;
+    font-weight: 700;
+}
+div[data-testid="stChatMessage"] {
+    border-radius: 14px;
+    border: 1px solid var(--pp-border);
+    box-shadow: 0 4px 14px rgba(18, 39, 57, 0.06);
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-user"]) {
+    background: #eef4fb;
+}
+div[data-testid="stChatMessage"]:has([data-testid="chatAvatarIcon-assistant"]) {
+    background: #fffefb;
+}
+button[kind="primary"] {
+    background: linear-gradient(125deg, var(--pp-accent) 0%, #f07248 100%) !important;
+    border: none !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+button[kind="secondary"] {
+    border: 1px solid var(--pp-border) !important;
+}
+.stTextInput input, .stTextArea textarea, .stSelectbox [data-baseweb="select"] > div {
+    border-radius: 12px !important;
+}
+[data-testid="stSidebar"] .stTextInput input,
+[data-testid="stSidebar"] .stTextArea textarea,
+[data-testid="stSidebar"] [data-baseweb="input"] > div > input,
+[data-testid="stSidebar"] [data-baseweb="select"] input {
+    color: var(--pp-ink) !important;
+    -webkit-text-fill-color: var(--pp-ink) !important;
+    background: #ffffff !important;
+}
+[data-testid="stSidebar"] .stTextInput input::placeholder,
+[data-testid="stSidebar"] .stTextArea textarea::placeholder,
+[data-testid="stSidebar"] [data-baseweb="input"] > div > input::placeholder,
+[data-testid="stSidebar"] [data-baseweb="select"] input::placeholder {
+    color: #6f8193 !important;
+    -webkit-text-fill-color: #6f8193 !important;
+    opacity: 1 !important;
+}
+[data-testid="stSidebar"] input:-webkit-autofill,
+[data-testid="stSidebar"] input:-webkit-autofill:hover,
+[data-testid="stSidebar"] input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--pp-ink) !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
+}
+.pp-login-wrap {
+    min-height: calc(100vh - 2.5rem);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.pp-login-card {
+    width: min(460px, 92vw);
+    border-radius: 20px;
+    border: 1px solid var(--pp-border);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 16px 40px rgba(17, 38, 55, 0.12);
+    padding: 1.2rem 1.2rem 1rem 1.2rem;
+    margin: 0 auto;
+}
+.pp-login-title {
+    font-size: 1.55rem;
+    font-weight: 750;
+    color: var(--pp-ink);
+    margin-bottom: 0.2rem;
+}
+.pp-login-subtitle {
+    color: var(--pp-ink-soft);
+    margin-bottom: 0.9rem;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+_inject_css()
 
 if "messages_by_mode" not in st.session_state:
     st.session_state.messages_by_mode = {"auto": [], "rag": [], "chat": []}
@@ -56,6 +218,24 @@ if "auth_session_warning" not in st.session_state:
     st.session_state.auth_session_warning = ""
 if "chat_retrieval_mode" not in st.session_state:
     st.session_state.chat_retrieval_mode = "auto"
+if "navigation" not in st.session_state:
+    st.session_state.navigation = "Workspace"
+if "user_email" not in st.session_state:
+    st.session_state.user_email = ""
+if "user_domain" not in st.session_state:
+    st.session_state.user_domain = ""
+if "groups_text" not in st.session_state:
+    st.session_state.groups_text = ""
+if "folder_id" not in st.session_state:
+    st.session_state.folder_id = DEFAULT_DRIVE_FOLDER_ID
+if "drive_auth_mode" not in st.session_state:
+    st.session_state.drive_auth_mode = "oauth"
+if "local_path" not in st.session_state:
+    st.session_state.local_path = DEFAULT_LOCAL_PATH
+if "local_acl" not in st.session_state:
+    st.session_state.local_acl = DEFAULT_LOCAL_ACL
+if "dev_mode_bypass" not in st.session_state:
+    st.session_state.dev_mode_bypass = not UI_REQUIRE_LOGIN
 
 
 def _safe_response_data(response: requests.Response) -> dict[str, Any]:
@@ -332,30 +512,90 @@ def _format_citation_label(citation: dict[str, Any]) -> str:
     return f"**{doc_name}** ({', '.join(parts[1:])})"
 
 
+def _is_authenticated() -> bool:
+    return bool(str(st.session_state.manual_token or "").strip() or str(st.session_state.auth_access_token or "").strip())
+
+
+def _render_login_page() -> None:
+    st.markdown(
+        """
+<style>
+[data-testid="stSidebar"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
+[data-testid="stMainBlockContainer"] {
+    max-width: 1280px !important;
+    padding-top: 6vh !important;
+    padding-bottom: 0.5rem !important;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    left, center, right = st.columns([1.0, 1.8, 1.0])
+    with center:
+        with st.container(border=True):
+            st.markdown("### Catalyst Iberia Ventures Secure Copilot")
+            st.caption("Sign in to access secure venture workflows, governed retrieval, and audit-ready citations.")
+            st.session_state.auth_username = st.text_input("Username", value=st.session_state.auth_username, key="login_username")
+            st.session_state.auth_password = st.text_input("Password", value=st.session_state.auth_password, type="password", key="login_password")
+            s1, s2 = st.columns([1.2, 1.0])
+            with s1:
+                if st.button("Sign In", type="primary", use_container_width=True, key="login_submit"):
+                    ok, message = _login_with_password(st.session_state.auth_username, st.session_state.auth_password)
+                    if ok:
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+            with s2:
+                if st.button("Use Session", use_container_width=True, key="login_use_session"):
+                    if _is_authenticated():
+                        st.success("Session found.")
+                        st.rerun()
+                    else:
+                        st.warning("No active token in session.")
+            with st.expander("Advanced: manual bearer token", expanded=False):
+                st.session_state.manual_token = st.text_input(
+                    "Manual bearer token (optional)",
+                    value=st.session_state.manual_token,
+                    type="password",
+                    key="login_manual_token",
+                ).strip()
+                if st.session_state.manual_token and st.button(
+                    "Continue with Token",
+                    type="primary",
+                    use_container_width=True,
+                    key="login_continue_token",
+                ):
+                    st.rerun()
+                if not UI_REQUIRE_LOGIN and st.button("Continue in Dev Mode", use_container_width=True, key="login_dev_mode"):
+                    st.session_state.dev_mode_bypass = True
+                    st.rerun()
+
+
+if UI_REQUIRE_LOGIN and not (_is_authenticated() or st.session_state.dev_mode_bypass):
+    _render_login_page()
+    st.stop()
+
 with st.sidebar:
-    st.header("Connection")
+    st.markdown('<div class="pp-brand-title">CATALYST IBERIA VENTURES</div>', unsafe_allow_html=True)
+    st.markdown('<div class="pp-brand-subtitle">Secure Multimodal Intelligence Workspace</div>', unsafe_allow_html=True)
+    st.session_state.navigation = st.radio(
+        "Navigation",
+        options=["Workspace", "Ingestion", "Runs", "Admin"],
+        index=["Workspace", "Ingestion", "Runs", "Admin"].index(st.session_state.navigation),
+    )
+    st.markdown("---")
+    st.caption("Connection")
     st.session_state.api_url = st.text_input("API URL", value=st.session_state.api_url)
-
-    st.subheader("Auth (Keycloak)")
-    st.caption("Use Login for auto-refresh, or paste a manual bearer token override.")
-
+    st.caption("Auth")
     st.session_state.manual_token = st.text_input(
         "Manual bearer token (optional override)",
         value=st.session_state.manual_token,
         type="password",
     ).strip()
-
-    auth_username_input = st.text_input(
-        "Keycloak username",
-        value=st.session_state.auth_username,
-        key="auth_username_input",
-    ).strip()
-    auth_password_input = st.text_input(
-        "Keycloak password",
-        value=st.session_state.auth_password,
-        type="password",
-        key="auth_password_input",
-    )
+    auth_username_input = st.text_input("Keycloak username", value=st.session_state.auth_username, key="auth_username_input").strip()
+    auth_password_input = st.text_input("Keycloak password", value=st.session_state.auth_password, type="password", key="auth_password_input")
     st.session_state.auth_username = auth_username_input
     st.session_state.auth_password = auth_password_input
 
@@ -376,28 +616,43 @@ with st.sidebar:
     if st.session_state.auth_session_warning:
         st.warning(st.session_state.auth_session_warning)
 
-    st.header("User Context")
-    user_email = st.text_input("email", value="")
-    user_domain = st.text_input("domain", value="")
-    groups_text = st.text_area("groups (one per line)", value="")
-    user_groups = [g.strip() for g in groups_text.splitlines() if g.strip()]
+    st.markdown("---")
+    st.caption("User context")
+    st.session_state.user_email = st.text_input("email", value=st.session_state.user_email)
+    st.session_state.user_domain = st.text_input("domain", value=st.session_state.user_domain)
+    st.session_state.groups_text = st.text_area("groups (one per line)", value=st.session_state.groups_text)
+    user_groups = [g.strip() for g in st.session_state.groups_text.splitlines() if g.strip()]
 
-    st.header("Ingestion")
-    folder_id = st.text_input("Google Drive folder id", value=DEFAULT_DRIVE_FOLDER_ID)
-    auth_mode = st.selectbox("Drive auth mode", options=["oauth", "service_account"], index=0)
-    local_path = st.text_input("Local path", value="./tests/data/sample_docs")
-    local_acl = st.text_input("Local ACL sidecar", value="./tests/data/sample_docs/acl_map.yaml")
+    st.markdown("---")
+    st.caption("Ingestion defaults")
+    st.session_state.folder_id = st.text_input("Google Drive folder id", value=st.session_state.folder_id)
+    st.session_state.drive_auth_mode = st.selectbox(
+        "Drive auth mode",
+        options=["oauth", "service_account"],
+        index=0 if st.session_state.drive_auth_mode == "oauth" else 1,
+    )
+    st.session_state.local_path = st.text_input("Local path", value=st.session_state.local_path)
+    st.session_state.local_acl = st.text_input("Local ACL sidecar", value=st.session_state.local_acl)
 
+st.markdown('<div class="pp-page-title">Secure Multimodal RAG Workspace</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="pp-page-subtitle">Grounded Q&A for venture operations with retrieval-time ACL filtering and audit-ready citations.</div>',
+    unsafe_allow_html=True,
+)
 
-st.title("Secure Multimodal RAG MVP")
-st.caption("Grounded Q&A with retrieval-time ACL filtering, citations, and audit run IDs")
-
-chat_tab, admin_tab = st.tabs(["Chat", "Admin"])
-
-with chat_tab:
+if st.session_state.navigation == "Ingestion":
     c1, c2 = st.columns(2)
     with c1:
-        if st.button("Ingest Google Drive", use_container_width=True):
+        st.markdown("### Google Drive")
+        st.caption("Recursive ingestion over folders and nested subfolders.")
+        folder_id = st.text_input("Drive folder id", value=st.session_state.folder_id, key="ingest_folder_id")
+        auth_mode = st.selectbox(
+            "Auth mode",
+            options=["oauth", "service_account"],
+            index=0 if st.session_state.drive_auth_mode == "oauth" else 1,
+            key="ingest_auth_mode",
+        )
+        if st.button("Start Google Drive Ingestion", type="primary", use_container_width=True):
             if not folder_id.strip():
                 st.error("Google Drive folder id is required.")
             else:
@@ -407,77 +662,162 @@ with chat_tab:
                     "dry_run": False,
                     "dataset_source": "google_drive",
                 }
-                try:
-                    status, data = _run_ingest_job_with_poll(
-                        endpoint="/ingest/gdrive/async",
-                        payload=payload,
-                        label="Google Drive ingest",
-                    )
-                    st.caption(f"status={status}")
-                    if status >= 400:
-                        st.error(f"status={status} data={data}")
-                    else:
-                        st.json(data)
-                except Exception as exc:  # noqa: BLE001
-                    st.error(str(exc))
-
-    with c2:
-        if st.button("Ingest Local Folder", use_container_width=True):
-            payload = {
-                "path": local_path,
-                "acl_sidecar_path": local_acl,
-                "dry_run": False,
-                "dataset_source": "local_folder",
-            }
-            try:
                 status, data = _run_ingest_job_with_poll(
-                    endpoint="/ingest/local/async",
+                    endpoint="/ingest/gdrive/async",
                     payload=payload,
-                    label="Local ingest",
+                    label="Google Drive ingest",
                 )
                 st.caption(f"status={status}")
                 if status >= 400:
                     st.error(f"status={status} data={data}")
                 else:
                     st.json(data)
-            except Exception as exc:  # noqa: BLE001
-                st.error(str(exc))
+    with c2:
+        st.markdown("### Local Folder")
+        st.caption("Use ACL sidecar mapping for local corpus permissions.")
+        local_path = st.text_input("Local path", value=st.session_state.local_path, key="ingest_local_path")
+        local_acl = st.text_input("ACL sidecar", value=st.session_state.local_acl, key="ingest_local_acl")
+        if st.button("Start Local Ingestion", type="primary", use_container_width=True):
+            payload = {
+                "path": local_path,
+                "acl_sidecar_path": local_acl,
+                "dry_run": False,
+                "dataset_source": "local_folder",
+            }
+            status, data = _run_ingest_job_with_poll(
+                endpoint="/ingest/local/async",
+                payload=payload,
+                label="Local ingest",
+            )
+            st.caption(f"status={status}")
+            if status >= 400:
+                st.error(f"status={status} data={data}")
+            else:
+                st.json(data)
+elif st.session_state.navigation == "Runs":
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">Auto last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("auto") or "-"}</div></div>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">RAG last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("rag") or "-"}</div></div>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">Chat last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("chat") or "-"}</div></div>',
+            unsafe_allow_html=True,
+        )
+    run_id = st.text_input("Inspect run_id", value=st.session_state.last_run_by_mode.get(st.session_state.chat_retrieval_mode) or "")
+    if st.button("Load run details", type="primary"):
+        if not run_id.strip():
+            st.error("run_id is required")
+        else:
+            status, data = _api_request("GET", f"/runs/{run_id}", timeout=30)
+            st.caption(f"status={status}")
+            if status >= 400:
+                st.error(data)
+            else:
+                st.json(data)
+
+elif st.session_state.navigation == "Admin":
+    st.subheader("Admin Console")
+    st.caption("Requires admin bearer token and AUTH_ENABLED=true")
+
+    if st.button("Load Drive Group Mapping"):
+        status, data = _api_request("GET", "/admin/settings/drive-group-map")
+        if status < 400:
+            st.session_state.admin_mapping_text = json.dumps(data.get("mapping", {}), indent=2)
+            st.success(f"Loaded mapping from {data.get('source')}")
+        else:
+            st.error(f"status={status} data={data}")
+
+    st.session_state.admin_mapping_text = st.text_area(
+        "Drive group mapping JSON",
+        value=st.session_state.admin_mapping_text,
+        height=180,
+    )
+    if st.button("Save Drive Group Mapping", type="primary"):
+        try:
+            mapping = json.loads(st.session_state.admin_mapping_text or "{}")
+        except json.JSONDecodeError as exc:
+            st.error(f"Invalid JSON: {exc}")
+            mapping = None
+        if mapping is not None:
+            status, data = _api_request("PUT", "/admin/settings/drive-group-map", payload={"mapping": mapping})
+            if status < 400:
+                st.success("Drive mapping saved to DB")
+                st.json(data)
+            else:
+                st.error(f"status={status} data={data}")
+
+    st.markdown("### Access Preview")
+    p_email = st.text_input("preview email", value=st.session_state.user_email)
+    p_domain = st.text_input("preview domain", value=st.session_state.user_domain)
+    p_groups = st.text_input("preview groups (comma separated)", value=",".join(user_groups))
+    p_sources = st.text_input("sources filter (comma separated, optional)", value="")
+    p_limit = st.number_input("preview limit", min_value=1, max_value=500, value=100)
+    if st.button("Run Access Preview", type="primary"):
+        payload = {
+            "principal": {
+                "email": p_email or None,
+                "domain": p_domain or None,
+                "groups": [g.strip() for g in p_groups.split(",") if g.strip()],
+            },
+            "sources": [s.strip() for s in p_sources.split(",") if s.strip()],
+            "limit": int(p_limit),
+        }
+        status, data = _api_request("POST", "/admin/access/preview", payload=payload)
+        if status < 400:
+            st.json(data)
+        else:
+            st.error(f"status={status} data={data}")
+
+else:
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">Active API</div><div class="pp-kpi-value">{st.session_state.api_url}</div></div>',
+            unsafe_allow_html=True,
+        )
+    with c2:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">Auth Status</div><div class="pp-kpi-value">{_auth_status_text()}</div></div>',
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            f'<div class="pp-kpi"><div class="pp-kpi-label">User Groups</div><div class="pp-kpi-value">{len(user_groups)}</div></div>',
+            unsafe_allow_html=True,
+        )
 
     retrieval_modes = ["auto", "rag", "chat"]
     default_mode_index = retrieval_modes.index(st.session_state.chat_retrieval_mode) if st.session_state.chat_retrieval_mode in retrieval_modes else 0
     st.session_state.chat_retrieval_mode = st.selectbox(
-        "Retrieval mode",
+        "Workspace mode",
         options=retrieval_modes,
         index=default_mode_index,
-        help="auto = detect chat acknowledgements, rag = always retrieve evidence, chat = never retrieve. Context is isolated per mode.",
+        help="auto routes between chat and retrieval, rag enforces grounded retrieval, chat uses conversational mode only.",
     )
-
     active_mode = st.session_state.chat_retrieval_mode
-    if active_mode not in st.session_state.messages_by_mode:
-        st.session_state.messages_by_mode[active_mode] = []
-    if active_mode not in st.session_state.last_response_by_mode:
-        st.session_state.last_response_by_mode[active_mode] = None
-    if active_mode not in st.session_state.last_run_by_mode:
-        st.session_state.last_run_by_mode[active_mode] = None
-
     active_messages = st.session_state.messages_by_mode[active_mode]
-
     for msg in active_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    question = st.chat_input("Ask a question")
+    question = st.chat_input("Ask a question about your venture corpus")
     if question:
         history_payload = [
             {"role": str(m.get("role", "")).strip(), "content": str(m.get("content", "")).strip()}
             for m in active_messages[-8:]
             if str(m.get("content", "")).strip() and str(m.get("role", "")).strip() in {"user", "assistant", "system"}
         ]
-
         active_messages.append({"role": "user", "content": question})
         with st.chat_message("user"):
             st.markdown(question)
-
         payload = {
             "query": question,
             "mode": _infer_query_mode(question),
@@ -485,28 +825,25 @@ with chat_tab:
             "include_images": True,
             "chat_history": history_payload,
             "user_context": {
-                "email": user_email,
-                "domain": user_domain,
+                "email": st.session_state.user_email,
+                "domain": st.session_state.user_domain,
                 "groups": user_groups,
             },
         }
-
         with st.chat_message("assistant"):
-            with st.spinner("Querying..."):
-                try:
-                    status, data = _api_request("POST", "/query", payload=payload, timeout=UI_QUERY_TIMEOUT_SEC)
-                    if status == 401:
-                        st.error("Session expired or invalid token. Click Login in the sidebar to refresh your session.")
-                    elif status >= 400:
-                        st.error(f"status={status} {data}")
-                    else:
-                        answer = data.get("answer", "")
-                        st.markdown(answer)
-                        active_messages.append({"role": "assistant", "content": answer})
-                        st.session_state.last_response_by_mode[active_mode] = data
-                        st.session_state.last_run_by_mode[active_mode] = data.get("run_id")
-                except Exception as exc:  # noqa: BLE001
-                    st.error(str(exc))
+            with st.spinner("Running retrieval and generation..."):
+                status, data = _api_request("POST", "/query", payload=payload, timeout=UI_QUERY_TIMEOUT_SEC)
+                if status == 401:
+                    st.error("Session expired or invalid token. Refresh login in the sidebar.")
+                elif status >= 400:
+                    st.error(f"status={status} {data}")
+                else:
+                    answer = str(data.get("answer") or "").strip()
+                    st.markdown(answer)
+                    active_messages.append({"role": "assistant", "content": answer})
+                    st.session_state.last_response_by_mode[active_mode] = data
+                    st.session_state.last_run_by_mode[active_mode] = data.get("run_id")
+
     result: dict[str, Any] | None = st.session_state.last_response_by_mode.get(active_mode)
     if result:
         st.subheader("Citations")
@@ -520,37 +857,34 @@ with chat_tab:
         run_id = result.get("run_id")
         if run_id:
             st.subheader("Evidence Viewer")
-            try:
-                status, run_data = _api_request("GET", f"/runs/{run_id}", timeout=30)
-                if status == 401:
-                    st.warning("Session expired while loading evidence viewer. Click Login in the sidebar.")
-                elif status < 400:
-                    evidence = run_data.get("retrieved_evidence", [])
-                    if evidence:
-                        selected = st.selectbox("Evidence node", options=[row.get("node_id") for row in evidence])
-                        row = next((r for r in evidence if r.get("node_id") == selected), None)
-                        if row:
-                            evidence_payload = row.get("payload", {}) if isinstance(row.get("payload"), dict) else {}
-                            if evidence_payload.get("source_kind") == "tabular":
-                                st.markdown(
-                                    f"**Document:** {evidence_payload.get('name') or evidence_payload.get('doc_id')}\n\n"
-                                    f"**Sheet:** {evidence_payload.get('sheet_name') or 'n/a'}\n\n"
-                                    f"**Rows:** {evidence_payload.get('row_start')} - {evidence_payload.get('row_end')}\n\n"
-                                    f"**Range:** {evidence_payload.get('cell_range') or 'n/a'}"
-                                )
-                                if evidence_payload.get("table_preview"):
-                                    st.code(str(evidence_payload.get("table_preview")), language="text")
-                            else:
-                                st.json(row)
-                            image_path = evidence_payload.get("image_path")
-                            if image_path and os.path.exists(image_path):
-                                st.image(image_path, caption=f"Evidence image: {selected}")
-                    else:
-                        st.info("No evidence rows found for run.")
+            status, run_data = _api_request("GET", f"/runs/{run_id}", timeout=30)
+            if status == 401:
+                st.warning("Session expired while loading evidence viewer.")
+            elif status < 400:
+                evidence = run_data.get("retrieved_evidence", [])
+                if evidence:
+                    selected = st.selectbox("Evidence node", options=[row.get("node_id") for row in evidence])
+                    row = next((r for r in evidence if r.get("node_id") == selected), None)
+                    if row:
+                        evidence_payload = row.get("payload", {}) if isinstance(row.get("payload"), dict) else {}
+                        if evidence_payload.get("source_kind") == "tabular":
+                            st.markdown(
+                                f"**Document:** {evidence_payload.get('name') or evidence_payload.get('doc_id')}\n\n"
+                                f"**Sheet:** {evidence_payload.get('sheet_name') or 'n/a'}\n\n"
+                                f"**Rows:** {evidence_payload.get('row_start')} - {evidence_payload.get('row_end')}\n\n"
+                                f"**Range:** {evidence_payload.get('cell_range') or 'n/a'}"
+                            )
+                            if evidence_payload.get("table_preview"):
+                                st.code(str(evidence_payload.get("table_preview")), language="text")
+                        else:
+                            st.json(row)
+                        image_path = evidence_payload.get("image_path")
+                        if image_path and os.path.exists(image_path):
+                            st.image(image_path, caption=f"Evidence image: {selected}")
                 else:
-                    st.warning(f"Unable to load run: status={status} data={run_data}")
-            except Exception as exc:  # noqa: BLE001
-                st.warning(f"Unable to load run evidence: {exc}")
+                    st.info("No evidence rows found for run.")
+            else:
+                st.warning(f"Unable to load run: status={status} data={run_data}")
 
             st.subheader("Feedback")
             feedback_reason = st.text_input("Reason (optional)", value="", key="feedback_reason")
@@ -573,157 +907,3 @@ with chat_tab:
                         timeout=15,
                     )
                     st.success("Feedback stored.")
-
-with admin_tab:
-    st.subheader("Admin Console")
-    st.caption("Requires admin bearer token and AUTH_ENABLED=true")
-
-    if st.button("Load Drive Group Mapping"):
-        status, data = _api_request("GET", "/admin/settings/drive-group-map")
-        if status < 400:
-            st.session_state.admin_mapping_text = json.dumps(data.get("mapping", {}), indent=2)
-            st.success(f"Loaded mapping from {data.get('source')}")
-        else:
-            st.error(f"status={status} data={data}")
-
-    st.session_state.admin_mapping_text = st.text_area(
-        "Drive group mapping JSON",
-        value=st.session_state.admin_mapping_text,
-        height=160,
-    )
-
-    if st.button("Save Drive Group Mapping"):
-        try:
-            mapping = json.loads(st.session_state.admin_mapping_text or "{}")
-        except json.JSONDecodeError as exc:
-            st.error(f"Invalid JSON: {exc}")
-            mapping = None
-
-        if mapping is not None:
-            status, data = _api_request("PUT", "/admin/settings/drive-group-map", payload={"mapping": mapping})
-            if status < 400:
-                st.success("Drive mapping saved to DB")
-                st.json(data)
-            else:
-                st.error(f"status={status} data={data}")
-
-    st.markdown("### Keycloak Groups and Users")
-    if st.button("Refresh Keycloak Data"):
-        g_status, g_data = _api_request("GET", "/admin/keycloak/groups", params={"max": 200})
-        u_status, u_data = _api_request("GET", "/admin/keycloak/users", params={"max": 200})
-        if g_status < 400:
-            st.write("Groups")
-            st.json(g_data)
-        else:
-            st.error(f"groups status={g_status} data={g_data}")
-        if u_status < 400:
-            st.write("Users")
-            st.json(u_data)
-        else:
-            st.error(f"users status={u_status} data={u_data}")
-
-    with st.form("create_user_form"):
-        st.markdown("### Create User")
-        new_username = st.text_input("username", value="")
-        new_email = st.text_input("email", value="")
-        new_first = st.text_input("first_name", value="")
-        new_last = st.text_input("last_name", value="")
-        new_password = st.text_input("password", value="", type="password")
-        new_groups_text = st.text_input("groups (comma separated)", value="")
-        submit_create = st.form_submit_button("Create User")
-
-        if submit_create:
-            payload = {
-                "username": new_username,
-                "email": new_email,
-                "password": new_password,
-                "first_name": new_first or None,
-                "last_name": new_last or None,
-                "groups": [g.strip() for g in new_groups_text.split(",") if g.strip()],
-                "enabled": True,
-            }
-            status, data = _api_request("POST", "/admin/keycloak/users", payload=payload)
-            if status < 400:
-                st.success("User created")
-                st.json(data)
-            else:
-                st.error(f"status={status} data={data}")
-
-    with st.form("set_groups_form"):
-        st.markdown("### Set User Groups")
-        target_user_id = st.text_input("user_id", value="")
-        target_groups = st.text_input("target groups (comma separated)", value="")
-        submit_groups = st.form_submit_button("Apply Groups")
-
-        if submit_groups:
-            payload = {"groups": [g.strip() for g in target_groups.split(",") if g.strip()]}
-            status, data = _api_request("PUT", f"/admin/keycloak/users/{target_user_id}/groups", payload=payload)
-            if status < 400:
-                st.success("User groups updated")
-                st.json(data)
-            else:
-                st.error(f"status={status} data={data}")
-
-    st.markdown("### Access Preview")
-    p_email = st.text_input("preview email", value=user_email)
-    p_domain = st.text_input("preview domain", value=user_domain)
-    p_groups = st.text_input("preview groups (comma separated)", value=",".join(user_groups))
-    p_sources = st.text_input("sources filter (comma separated, optional)", value="")
-    p_limit = st.number_input("preview limit", min_value=1, max_value=500, value=100)
-
-    if st.button("Run Access Preview"):
-        payload = {
-            "principal": {
-                "email": p_email or None,
-                "domain": p_domain or None,
-                "groups": [g.strip() for g in p_groups.split(",") if g.strip()],
-            },
-            "sources": [s.strip() for s in p_sources.split(",") if s.strip()],
-            "limit": int(p_limit),
-        }
-        status, data = _api_request("POST", "/admin/access/preview", payload=payload)
-        if status < 400:
-            st.json(data)
-        else:
-            st.error(f"status={status} data={data}")
-
-    st.markdown("### Trigger Drive Sync")
-    sync_folder = st.text_input("sync folder id", value=folder_id)
-    sync_auth_mode = st.selectbox("sync auth mode", options=["oauth", "service_account"], index=0, key="sync_auth_mode")
-    sync_dry_run = st.checkbox("sync dry run", value=False)
-    if st.button("Run Drive Sync"):
-        payload = {
-            "folder_id": sync_folder,
-            "auth_mode": sync_auth_mode,
-            "dry_run": sync_dry_run,
-            "dataset_source": "google_drive",
-        }
-        status, data = _run_ingest_job_with_poll(
-            endpoint="/admin/sync/gdrive/async",
-            payload=payload,
-            label="Admin Drive sync",
-        )
-        if status < 400:
-            st.success("Drive sync completed")
-            st.json(data)
-        else:
-            st.error(f"status={status} data={data}")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

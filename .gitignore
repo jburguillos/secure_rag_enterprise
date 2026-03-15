@@ -36,3 +36,4 @@ Thumbs.db
 # Build
 build/
 dist/
+.docker_tmp/

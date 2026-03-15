@@ -51,6 +51,10 @@ secure_rag_enterprise/
   ARCHITECTURE.md
 ```
 
+## Cloud Deployment
+For cloud rollout (pilot VM and production-grade Kubernetes), use:
+- [DEPLOYMENT_CLOUD.md](DEPLOYMENT_CLOUD.md)
+
 ## Prerequisites
 - Docker + Docker Compose
 - Python 3.11+ (for local scripts/tests)
