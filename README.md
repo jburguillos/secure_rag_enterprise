@@ -15,6 +15,18 @@ Supported content types in the current MVP:
 - Google Drive: Google Docs, Google Sheets, `pdf`, `docx`, `txt`, `xlsx`
 - excluded in this iteration: `csv`, legacy `xls`, spreadsheet charts/embedded objects, macros/VBA
 
+## Synthetic VC Dataset (Committed)
+This repository now includes a synthetic venture-capital dataset ZIP for reproducible demos and capstone validation:
+- [tests/data/synthetic/vc_drive_venture_fund_sintetico.zip](tests/data/synthetic/vc_drive_venture_fund_sintetico.zip)
+- Dataset scope: 204 files total
+- File types inside ZIP: `pdf` (40), `docx` (46), `txt` (27), `md` (27), `xlsx` (42), `csv` (21), `json` (1)
+- Important: `csv` files are intentionally present in the synthetic corpus but are skipped by current ingestion rules
+
+Usage:
+1. Unzip locally or upload extracted folders to Google Drive.
+2. Ingest from the Drive root folder ID (recursive).
+3. Validate retrieval/citations with Phase 3/4 query prompts.
+
 ## Implemented Scope
 This repository is scaffolded and implemented across the planned phases in a single MVP baseline:
 1. Phase 0 scaffold + compose stack
