@@ -94,6 +94,44 @@ _ACK_TOKENS = {
     "suena",
 }
 
+_SECURITY_BLOCK_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"\b(ignore|bypass|override)\b.{0,50}\b(previous|prior|system|rules?|instructions?|policy)\b",
+            re.IGNORECASE,
+        ),
+        "prompt_injection",
+    ),
+    (
+        re.compile(
+            r"\b(reveal|show|print|expose|dump)\b.{0,60}\b(secret|credentials?|passwords?|tokens?|api\s*keys?|system\s*prompt)\b",
+            re.IGNORECASE,
+        ),
+        "prompt_injection",
+    ),
+    (
+        re.compile(
+            r"\b(even if i am not authorized|without authorization|ignore permissions?|bypass (auth|authorization|acl))\b",
+            re.IGNORECASE,
+        ),
+        "auth_bypass",
+    ),
+    (
+        re.compile(
+            r"\b(call|send|post|upload|exfiltrat|leak)\b.{0,80}\b(external|website|webhook|http|https|server)\b",
+            re.IGNORECASE,
+        ),
+        "data_exfiltration",
+    ),
+    (
+        re.compile(
+            r"\bsend all (indexed )?(documents|docs|files)\b",
+            re.IGNORECASE,
+        ),
+        "data_exfiltration",
+    ),
+]
+
 
 @dataclass(frozen=True)
 class AutoRetrievalDecision:
@@ -216,6 +254,19 @@ def is_non_rag_chat_message(query: str) -> bool:
     """Return True when query looks like a conversational turn, not a knowledge request."""
 
     return decide_auto_retrieval_mode(query).mode == "chat"
+
+
+def detect_disallowed_request(query: str) -> str | None:
+    """Return security reason when query matches blocked unsafe behavior."""
+
+    normalized = _normalize_query(query)
+    if not normalized:
+        return None
+
+    for pattern, reason in _SECURITY_BLOCK_PATTERNS:
+        if pattern.search(normalized):
+            return reason
+    return None
 
 
 def build_smalltalk_response(query: str, *, chat_mode: bool = False) -> str:

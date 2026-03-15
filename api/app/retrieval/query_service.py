@@ -21,7 +21,7 @@ from app.retrieval.answerability import judge_answerability
 from app.retrieval.diversity import diversify_by_doc
 from app.retrieval.followup import maybe_rewrite_followup
 from app.retrieval.hybrid import RetrievalService
-from app.retrieval.intent import build_smalltalk_response, decide_auto_retrieval_mode
+from app.retrieval.intent import build_smalltalk_response, decide_auto_retrieval_mode, detect_disallowed_request
 
 _SUMMARIZE_HINTS = (
     "summarize",
@@ -952,6 +952,76 @@ def _empty_resource_acl() -> dict[str, Any]:
     }
 
 
+def _security_refusal_answer(reason: str) -> str:
+    if reason == "auth_bypass":
+        return "I cannot help with bypassing authorization controls."
+    if reason == "data_exfiltration":
+        return "I cannot help with data exfiltration or outbound data transfer requests."
+    return "I cannot comply with that request."
+
+
+async def _build_security_refusal_query_response(
+    *,
+    request: QueryRequest,
+    entitlements: Entitlements,
+    run_id: UUID,
+    reason: str,
+) -> QueryResponse:
+    settings = get_settings()
+    effective_mode = _effective_query_mode(request)
+    answer = _security_refusal_answer(reason)
+    refusal_reason = "policy_violation"
+    response_status = "refused"
+
+    policy_model = PolicyDecision(
+        allow=False,
+        reason=f"blocked_{reason}",
+        policy_version="1.0",
+    )
+
+    with get_session() as session:
+        persist_policy_decision(
+            session,
+            decision_id=policy_model.decision_id,
+            run_id=run_id,
+            user_id_hash=None,
+            user_groups=entitlements.groups,
+            policy_input={
+                "query_hash_only": True,
+                "retrieval_mode": request.retrieval_mode,
+                "effective_mode": effective_mode,
+                "security_blocked": True,
+                "security_reason": reason,
+            },
+            policy_result=policy_model.model_dump(),
+            policy_version=policy_model.policy_version,
+        )
+        persist_query_audit(
+            session,
+            run_id=run_id,
+            query=request.query,
+            mode=effective_mode,
+            response_status=response_status,
+            refusal_reason=refusal_reason,
+            user_id=entitlements.user_id,
+            email=entitlements.email,
+            groups=entitlements.groups,
+            evidence_rows=[],
+            citation_rows=[],
+            policy_decision_id=policy_model.decision_id,
+            model_id="security_guardrails",
+            model_version="1.0",
+        )
+
+    return QueryResponse(
+        run_id=run_id,
+        answer=answer,
+        refusal_reason=refusal_reason,
+        citations=[],
+        policy_decision=policy_model,
+    )
+
+
 async def _build_smalltalk_query_response(
     *,
     request: QueryRequest,
@@ -1036,6 +1106,15 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
     rewritten_for_followup = False
     if request.chat_history:
         retrieval_query, rewritten_for_followup = maybe_rewrite_followup(request.query, request.chat_history)
+
+    blocked_reason = detect_disallowed_request(request.query)
+    if blocked_reason:
+        return await _build_security_refusal_query_response(
+            request=request,
+            entitlements=entitlements,
+            run_id=run_id,
+            reason=blocked_reason,
+        )
 
     if request.retrieval_mode == "chat":
         return await _build_smalltalk_query_response(

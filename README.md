@@ -230,6 +230,7 @@ OPA policy file: `infra/opa/policy.rego`
 - Retrieval-time ACL filter in Qdrant (no post-filter leakage)
 - Defense-in-depth: additional payload ACL check + OPA call
 - Citation requirement for factual answers; refusal when insufficient evidence
+- Prompt-level security blocks for injection, auth-bypass, and outbound exfiltration requests (`refusal_reason=policy_violation`)
 - Append-only audit tables in Postgres (triggers deny update/delete)
 - Public LLM disabled by default; outbound disabled by default in prod mode
 
@@ -241,12 +242,26 @@ pytest -q
 
 ### Security regression prompts
 ```bash
-python scripts/security_regression.py --url http://localhost:8000 --cases tests/redteam/prompts.yaml
+python scripts/security_regression.py --url http://localhost:8000 --cases tests/redteam/prompts.json
 ```
 
 ### Load test
 ```bash
-python scripts/load_test.py --url http://localhost:8000/query --requests 200 --concurrency 8
+python scripts/load_test.py --url http://localhost:8000/query --requests 200 --concurrency 8 --max-failure-rate 0.05
+```
+
+Auth-enabled load test (token auto-refresh):
+```bash
+python scripts/load_test.py \
+  --url http://localhost:8000/query \
+  --requests 40 \
+  --concurrency 2 \
+  --timeout 240 \
+  --max-failure-rate 0.20 \
+  --token-url http://localhost:8080/realms/secure-rag/protocol/openid-connect/token \
+  --client-id secure-rag-api \
+  --username hr.user \
+  --password ChangeMe123!
 ```
 
 ### Multimodal benchmark subset
@@ -257,8 +272,41 @@ python scripts/benchmark_multimodal.py --api-url http://localhost:8000 --dataset
 ## 12) Backup / Restore
 ```bash
 python scripts/backup_restore.py backup
-python scripts/backup_restore.py restore
+python scripts/backup_restore.py restore --backup-dir backups --skip-postgres --skip-qdrant
 ```
+
+To restore data from latest backup:
+```bash
+python scripts/backup_restore.py restore --backup-dir backups
+```
+
+To restore from a specific manifest:
+```bash
+python scripts/backup_restore.py restore --manifest backups/<timestamp>/manifest.json
+```
+
+## 12.1) Phase 5 End-to-End Verification
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify_phase5.ps1 `
+  -ApiUrl http://localhost:8000 `
+  -CasesPath tests/redteam/prompts.json `
+  -LoadRequests 10 `
+  -LoadConcurrency 1 `
+  -MaxFailureRate 0.20 `
+  -Username hr.user `
+  -Password ChangeMe123!
+```
+
+This checks:
+- health/readiness/metrics
+- secure runtime toggles (`ALLOW_OUTBOUND=false`, `ALLOW_PUBLIC_LLM=false`)
+- security regression suite
+- load test (p50/p95/throughput and failure-rate gate)
+- backup creation + restore-flow simulation using generated manifest
+
+If `AUTH_ENABLED=true`, provide either:
+- `-BearerToken <jwt>`
+- or `-Username/-Password` (Keycloak direct grant) so security/load checks do not fail with `401`.
 
 ## 13) ACL Demo (HR vs Finance isolation)
 1. Ingest `tests/data/sample_docs`.
