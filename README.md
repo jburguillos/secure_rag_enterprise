@@ -312,6 +312,26 @@ If `AUTH_ENABLED=true`, provide either:
 - `-BearerToken <jwt>`
 - or `-Username/-Password` (Keycloak direct grant) so security/load checks do not fail with `401`.
 
+## 12.2) Capstone Evidence Capture (Recommended)
+To generate a single timestamped evidence pack for analysis/write-up:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/capture_phase5_artifacts.ps1 `
+  -ApiUrl http://localhost:8000 `
+  -Username jburguillos.drive `
+  -Password ChangeMe123!
+```
+
+Outputs are written to:
+- `artifacts/capstone/<timestamp>/health_liveness.json`
+- `artifacts/capstone/<timestamp>/health_readiness.json`
+- `artifacts/capstone/<timestamp>/metrics.prom`
+- `artifacts/capstone/<timestamp>/pytest_api_docker.txt`
+- `artifacts/capstone/<timestamp>/verify_phase5.txt`
+- `artifacts/capstone/<timestamp>/summary.json`
+
+If you see Docker access errors on Windows (`open //./pipe/docker_engine: Access is denied`), run the terminal as Administrator and retry.
+
 ## 13) ACL Demo (HR vs Finance isolation)
 1. Ingest `tests/data/sample_docs`.
 2. Query as HR context for finance-only prompt -> refusal / no finance evidence.
