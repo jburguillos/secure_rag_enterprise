@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from qdrant_client.models import FieldCondition, Filter, MatchValue
+from qdrant_client.models import FieldCondition, Filter, MatchAny, MatchValue
 
 from app.auth.context import Entitlements
 
@@ -13,14 +13,16 @@ def build_acl_filter(entitlements: Entitlements) -> Filter:
     should: list[FieldCondition] = [FieldCondition(key="is_public", match=MatchValue(value=True))]
 
     if entitlements.email:
-        should.append(FieldCondition(key="allowed_emails", match=MatchValue(value=entitlements.email.lower())))
+        # ACL fields are stored as string arrays in payload; MatchAny is the
+        # most robust operator across Qdrant versions for array membership.
+        should.append(FieldCondition(key="allowed_emails", match=MatchAny(any=[entitlements.email.lower()])))
     if entitlements.domain:
-        should.append(FieldCondition(key="allowed_domains", match=MatchValue(value=entitlements.domain.lower())))
+        should.append(FieldCondition(key="allowed_domains", match=MatchAny(any=[entitlements.domain.lower()])))
     if entitlements.user_id:
-        should.append(FieldCondition(key="allowed_users", match=MatchValue(value=entitlements.user_id.lower())))
+        should.append(FieldCondition(key="allowed_users", match=MatchAny(any=[entitlements.user_id.lower()])))
 
     for group in sorted({g.lower() for g in entitlements.groups}):
-        should.append(FieldCondition(key="allowed_groups", match=MatchValue(value=group)))
+        should.append(FieldCondition(key="allowed_groups", match=MatchAny(any=[group])))
 
     return Filter(should=should)
 
