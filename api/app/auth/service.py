@@ -1,7 +1,10 @@
-﻿"""Auth service for deriving request entitlements."""
+"""Auth service for deriving request entitlements."""
 
 from __future__ import annotations
 
+from typing import Any
+
+import httpx
 from fastapi import HTTPException
 
 from app.auth.context import Entitlements
@@ -12,6 +15,40 @@ from app.config import get_settings
 
 def _issuer_aliases(raw_aliases: str) -> list[str]:
     return [value.strip() for value in raw_aliases.split(",") if value.strip()]
+
+
+def _claims_need_userinfo_enrichment(claims: dict[str, Any]) -> bool:
+    has_email = bool(claims.get("email"))
+    has_groups = bool(claims.get("groups")) or bool(((claims.get("realm_access") or {}).get("roles") or []))
+    return not has_email or not has_groups
+
+
+async def _fetch_userinfo(*, issuer: str, token: str) -> dict[str, Any] | None:
+    userinfo_url = issuer.rstrip("/") + "/protocol/openid-connect/userinfo"
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            response = await client.get(
+                userinfo_url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _merge_claims_with_userinfo(claims: dict[str, Any], userinfo: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(claims)
+    if not merged.get("email") and userinfo.get("email"):
+        merged["email"] = userinfo.get("email")
+    if not merged.get("preferred_username") and userinfo.get("preferred_username"):
+        merged["preferred_username"] = userinfo.get("preferred_username")
+    if not merged.get("sub") and userinfo.get("sub"):
+        merged["sub"] = userinfo.get("sub")
+    if not merged.get("groups") and userinfo.get("groups"):
+        merged["groups"] = userinfo.get("groups")
+    return merged
 
 
 async def resolve_entitlements(
@@ -37,6 +74,11 @@ async def resolve_entitlements(
         claims = await validator.validate(token)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=401, detail="Invalid token") from exc
+
+    if _claims_need_userinfo_enrichment(claims):
+        userinfo = await _fetch_userinfo(issuer=settings.keycloak_issuer, token=token)
+        if userinfo:
+            claims = _merge_claims_with_userinfo(claims, userinfo)
 
     entitlements = Entitlements.from_claims(claims)
     return apply_drive_group_mapping(entitlements)
