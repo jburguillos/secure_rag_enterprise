@@ -47,7 +47,16 @@ def build_metadata_filter(filters: QueryFilters | None) -> Filter | None:
 
     mime_types = _normalize_many(filters.mime_types)
     if mime_types:
-        must.append(FieldCondition(key="mimeType", match=MatchAny(any=mime_types)))
+        # Backward-compatible MIME filtering:
+        # some indexed nodes use `mimeType` while others expose `type`.
+        must.append(
+            Filter(
+                should=[
+                    FieldCondition(key="mimeType", match=MatchAny(any=mime_types)),
+                    FieldCondition(key="type", match=MatchAny(any=mime_types)),
+                ]
+            )
+        )
 
     doc_ids = _normalize_many(filters.doc_ids)
     if doc_ids:
