@@ -13,15 +13,23 @@ def build_acl_filter(entitlements: Entitlements) -> Filter:
     should: list[FieldCondition] = [FieldCondition(key="is_public", match=MatchValue(value=True))]
 
     if entitlements.email:
-        # ACL fields are stored as string arrays in payload; MatchAny is the
-        # most robust operator across Qdrant versions for array membership.
-        should.append(FieldCondition(key="allowed_emails", match=MatchAny(any=[entitlements.email.lower()])))
+        email = entitlements.email.lower()
+        # Compatibility guard:
+        # - MatchValue works for keyword arrays in most Qdrant setups.
+        # - MatchAny keeps backward compatibility where configured.
+        should.append(FieldCondition(key="allowed_emails", match=MatchValue(value=email)))
+        should.append(FieldCondition(key="allowed_emails", match=MatchAny(any=[email])))
     if entitlements.domain:
-        should.append(FieldCondition(key="allowed_domains", match=MatchAny(any=[entitlements.domain.lower()])))
+        domain = entitlements.domain.lower()
+        should.append(FieldCondition(key="allowed_domains", match=MatchValue(value=domain)))
+        should.append(FieldCondition(key="allowed_domains", match=MatchAny(any=[domain])))
     if entitlements.user_id:
-        should.append(FieldCondition(key="allowed_users", match=MatchAny(any=[entitlements.user_id.lower()])))
+        user_id = entitlements.user_id.lower()
+        should.append(FieldCondition(key="allowed_users", match=MatchValue(value=user_id)))
+        should.append(FieldCondition(key="allowed_users", match=MatchAny(any=[user_id])))
 
     for group in sorted({g.lower() for g in entitlements.groups}):
+        should.append(FieldCondition(key="allowed_groups", match=MatchValue(value=group)))
         should.append(FieldCondition(key="allowed_groups", match=MatchAny(any=[group])))
 
     return Filter(should=should)
