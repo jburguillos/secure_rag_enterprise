@@ -491,11 +491,18 @@ AUTH_ENABLED=true
 KEYCLOAK_ISSUER=http://keycloak:8080/realms/secure-rag
 KEYCLOAK_ISSUER_ALIASES=http://localhost:8080/realms/secure-rag
 ```
-3. Recreate API:
+3. Audience matching:
+```bash
+# Default
+KEYCLOAK_AUDIENCE=secure-rag-api
+# If your realm emits aud=account for password grant, allow both:
+# KEYCLOAK_AUDIENCE=secure-rag-api,account
+```
+4. Recreate API:
 ```bash
 docker compose up -d --force-recreate api
 ```
-4. Run Phase 2 gate:
+5. Run Phase 2 gate:
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/verify_phase2.ps1
 ```

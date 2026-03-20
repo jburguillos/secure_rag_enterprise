@@ -27,6 +27,22 @@ class JWTValidator:
                 issuers.add(alias.rstrip("/").lower())
         return issuers
 
+    def _normalized_audiences(self) -> set[str]:
+        return {
+            value.strip()
+            for value in str(self.audience or "").split(",")
+            if value and value.strip()
+        }
+
+    @staticmethod
+    def _claim_audiences(claims: dict[str, Any]) -> set[str]:
+        aud = claims.get("aud")
+        if isinstance(aud, str):
+            return {aud}
+        if isinstance(aud, list):
+            return {str(item) for item in aud if item}
+        return set()
+
     async def _fetch_jwks(self) -> dict[str, Any]:
         now = time.time()
         if self._jwks and now - self._jwks_fetched_at < 600:
@@ -48,11 +64,14 @@ class JWTValidator:
             token,
             jwks,
             algorithms=["RS256", "RS384", "RS512"],
-            audience=self.audience,
-            options={"verify_aud": True, "verify_exp": True, "verify_iss": False},
+            options={"verify_aud": False, "verify_exp": True, "verify_iss": False},
         )
 
         token_issuer = str(claims.get("iss") or "").rstrip("/").lower()
         if token_issuer not in self._normalized_issuers():
             raise ValueError("issuer_mismatch")
+        allowed_audiences = self._normalized_audiences()
+        token_audiences = self._claim_audiences(claims)
+        if allowed_audiences and token_audiences.isdisjoint(allowed_audiences):
+            raise ValueError("audience_mismatch")
         return claims
