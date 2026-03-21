@@ -17,7 +17,7 @@ from app.generation.ollama_client import OllamaClient
 from app.generation.service import GenerationResult, generate_chat_answer, generate_grounded_answer
 from app.models.schemas import Citation, PolicyDecision, QueryFilters, QueryRequest, QueryResponse
 from app.policy.opa_client import PolicyClient, PolicyResult
-from app.retrieval.acl import payload_access_allowed
+from app.retrieval.acl import extract_acl_payload, payload_access_allowed
 from app.retrieval.answerability import judge_answerability
 from app.retrieval.diversity import diversify_by_doc
 from app.retrieval.followup import maybe_rewrite_followup
@@ -666,13 +666,7 @@ async def _authorize_nodes(
         if not payload_access_allowed(payload, entitlements):
             continue
 
-        acl = {
-            "allowed_users": payload.get("allowed_users") or [],
-            "allowed_groups": payload.get("allowed_groups") or [],
-            "allowed_emails": payload.get("allowed_emails") or [],
-            "allowed_domains": payload.get("allowed_domains") or [],
-            "is_public": bool(payload.get("is_public", False)),
-        }
+        acl = extract_acl_payload(payload)
         decision = await policy.evaluate(entitlements=entitlements, resource_acl=acl, transitional_drive_acl=True)
         if decision.allow:
             allowed_nodes.append(node)

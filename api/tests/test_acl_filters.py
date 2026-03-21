@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.auth.context import Entitlements
-from app.retrieval.acl import build_acl_filter, payload_access_allowed
+from app.retrieval.acl import build_acl_filter, extract_acl_payload, payload_access_allowed
 
 
 def test_build_acl_filter_includes_public_and_email_domain() -> None:
@@ -41,3 +41,35 @@ def test_drive_transitional_email_domain_acl() -> None:
 
     assert payload_access_allowed(email_doc, ent_email)
     assert payload_access_allowed(domain_doc, ent_domain)
+
+
+def test_nested_permissions_summary_acl_is_supported() -> None:
+    ent = Entitlements(authenticated=True, email="alice@example.com", domain="example.com", groups=["hr"])
+    payload = {
+        "permissions_summary": {
+            "is_public": False,
+            "allowed_emails": ["alice@example.com"],
+            "allowed_groups": ["finance"],
+        }
+    }
+
+    acl = extract_acl_payload(payload)
+
+    assert acl["allowed_emails"] == ["alice@example.com"]
+    assert acl["allowed_groups"] == ["finance"]
+    assert acl["is_public"] is False
+    assert payload_access_allowed(payload, ent)
+
+
+def test_nested_metadata_permissions_summary_acl_is_supported() -> None:
+    ent = Entitlements(authenticated=True, email="finance.user@example.com", domain="example.com", groups=["finance"])
+    payload = {
+        "metadata": {
+            "permissions_summary": {
+                "is_public": False,
+                "allowed_groups": ["finance"],
+            }
+        }
+    }
+
+    assert payload_access_allowed(payload, ent)
