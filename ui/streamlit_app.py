@@ -580,59 +580,19 @@ if UI_REQUIRE_LOGIN and not (_is_authenticated() or st.session_state.dev_mode_by
 with st.sidebar:
     st.markdown('<div class="pp-brand-title">CATALYST IBERIA VENTURES</div>', unsafe_allow_html=True)
     st.markdown('<div class="pp-brand-subtitle">Secure Multimodal Intelligence Workspace</div>', unsafe_allow_html=True)
+    nav_options = ["Workspace", "Ingestion"]
+    if st.session_state.navigation not in nav_options:
+        st.session_state.navigation = "Workspace"
     st.session_state.navigation = st.radio(
         "Navigation",
-        options=["Workspace", "Ingestion", "Runs", "Admin"],
-        index=["Workspace", "Ingestion", "Runs", "Admin"].index(st.session_state.navigation),
+        options=nav_options,
+        index=nav_options.index(st.session_state.navigation),
     )
-    st.markdown("---")
-    st.caption("Connection")
-    st.session_state.api_url = st.text_input("API URL", value=st.session_state.api_url)
-    st.caption("Auth")
-    st.session_state.manual_token = st.text_input(
-        "Manual bearer token (optional override)",
-        value=st.session_state.manual_token,
-        type="password",
-    ).strip()
-    auth_username_input = st.text_input("Keycloak username", value=st.session_state.auth_username, key="auth_username_input").strip()
-    auth_password_input = st.text_input("Keycloak password", value=st.session_state.auth_password, type="password", key="auth_password_input")
-    st.session_state.auth_username = auth_username_input
-    st.session_state.auth_password = auth_password_input
-
-    a1, a2 = st.columns(2)
-    with a1:
-        if st.button("Login", use_container_width=True):
-            ok, message = _login_with_password(auth_username_input, auth_password_input)
-            if ok:
-                st.success(message)
-            else:
-                st.error(message)
-    with a2:
-        if st.button("Logout", use_container_width=True):
-            _clear_auth_session()
-            st.success("Session token cleared.")
-
     st.caption(_auth_status_text())
     if st.session_state.auth_session_warning:
         st.warning(st.session_state.auth_session_warning)
 
-    st.markdown("---")
-    st.caption("User context")
-    st.session_state.user_email = st.text_input("email", value=st.session_state.user_email)
-    st.session_state.user_domain = st.text_input("domain", value=st.session_state.user_domain)
-    st.session_state.groups_text = st.text_area("groups (one per line)", value=st.session_state.groups_text)
-    user_groups = [g.strip() for g in st.session_state.groups_text.splitlines() if g.strip()]
-
-    st.markdown("---")
-    st.caption("Ingestion defaults")
-    st.session_state.folder_id = st.text_input("Google Drive folder id", value=st.session_state.folder_id)
-    st.session_state.drive_auth_mode = st.selectbox(
-        "Drive auth mode",
-        options=["oauth", "service_account"],
-        index=0 if st.session_state.drive_auth_mode == "oauth" else 1,
-    )
-    st.session_state.local_path = st.text_input("Local path", value=st.session_state.local_path)
-    st.session_state.local_acl = st.text_input("Local ACL sidecar", value=st.session_state.local_acl)
+user_groups = [g.strip() for g in st.session_state.groups_text.splitlines() if g.strip()]
 
 st.markdown('<div class="pp-page-title">Secure Multimodal RAG Workspace</div>', unsafe_allow_html=True)
 st.markdown(

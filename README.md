@@ -196,8 +196,9 @@ Groups:
 
 Set `AUTH_ENABLED=true` in `.env` to enforce JWT validation.
 ### Streamlit Auto Token Refresh
-The UI now supports Keycloak login directly in the sidebar (`Auth (Keycloak)`):
-- click `Login` with Keycloak username/password
+The UI supports Keycloak login and token refresh in the sidebar (minimal by default):
+- default sidebar navigation is **Workspace** + **Ingestion** (minimal operator UX)
+- authentication details are available from the sidebar in the optional advanced section
 - access token + refresh token are stored in Streamlit session state
 - token refresh is attempted automatically before expiry and retried once on `401`
 - optional manual override remains available in `Manual bearer token`
@@ -540,7 +541,9 @@ Admin endpoints:
 - `PUT /admin/keycloak/users/{user_id}/groups`
 - `POST /admin/sync/gdrive`
 
-Streamlit now includes an **Admin** tab for these operations.
+UI note:
+- the minimal sidebar does **not** expose an Admin tab
+- admin operations are managed through Keycloak + secured `/admin/*` API endpoints
 
 ## 19) Drive ACL Sync Mode (Current vs Live)
 Current behavior:
