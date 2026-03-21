@@ -379,6 +379,7 @@ def _login_with_password(username: str, password: str) -> tuple[bool, str]:
             "client_id": KEYCLOAK_CLIENT_ID,
             "username": username,
             "password": password,
+            "scope": "openid email profile",
         }
     )
     if status >= 400:

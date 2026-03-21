@@ -567,6 +567,116 @@ async def test_run_query_flow_scopes_to_explicit_doc_reference(monkeypatch) -> N
 
 
 @pytest.mark.asyncio
+async def test_run_query_flow_preselects_q4_letter_doc_before_retrieval(monkeypatch) -> None:
+    @contextmanager
+    def _fake_session():
+        yield object()
+
+    captured: dict[str, object] = {}
+
+    class _FakeRetrievalService:
+        def retrieve_inventory(self, **kwargs):
+            q4 = RetrievedNode(
+                node_id="q4::inv",
+                score=1.0,
+                text="doc metadata",
+                payload={
+                    "doc_id": "q4-doc",
+                    "name": "2024-Q4_Investor_Letter.pdf",
+                    "chunk_id": "q4-doc::meta",
+                    "modality": "text",
+                    "allowed_groups": ["hr"],
+                },
+            )
+            q3 = RetrievedNode(
+                node_id="q3::inv",
+                score=0.8,
+                text="doc metadata",
+                payload={
+                    "doc_id": "q3-doc",
+                    "name": "2024-Q3_Investor_Letter.pdf",
+                    "chunk_id": "q3-doc::meta",
+                    "modality": "text",
+                    "allowed_groups": ["hr"],
+                },
+            )
+            return [q4, q3]
+
+        def retrieve_multimodal(self, **kwargs):
+            query_filters = kwargs.get("query_filters")
+            captured["doc_ids"] = list((query_filters.doc_ids or [])) if query_filters else []
+
+            nodes = [
+                RetrievedNode(
+                    node_id="q4::n0",
+                    score=0.9,
+                    text="Q4 investor letter key points.",
+                    payload={
+                        "doc_id": "q4-doc",
+                        "name": "2024-Q4_Investor_Letter.pdf",
+                        "chunk_id": "q4-doc::c0",
+                        "modality": "text",
+                        "allowed_groups": ["hr"],
+                    },
+                ),
+                RetrievedNode(
+                    node_id="q3::n0",
+                    score=0.8,
+                    text="Q3 investor letter key points.",
+                    payload={
+                        "doc_id": "q3-doc",
+                        "name": "2024-Q3_Investor_Letter.pdf",
+                        "chunk_id": "q3-doc::c0",
+                        "modality": "text",
+                        "allowed_groups": ["hr"],
+                    },
+                ),
+            ]
+
+            if query_filters and query_filters.doc_ids:
+                allowed = set(query_filters.doc_ids)
+                nodes = [node for node in nodes if str(node.payload.get("doc_id")) in allowed]
+
+            return RetrievalBundle(evidence=nodes, text_evidence=nodes, image_evidence=[])
+
+    class _FakePolicyClient:
+        async def evaluate(self, **kwargs):
+            from app.policy.opa_client import PolicyResult
+            from uuid import uuid4
+
+            return PolicyResult(decision_id=uuid4(), allow=True, reason="allowed_group_match", policy_version="1.0")
+
+    async def _fake_judge(**kwargs):
+        return AnswerabilityDecision(answerable=True, reason="topic_supported", support_indices=[1], source="heuristic")
+
+    async def _fake_generate(**kwargs):
+        return GenerationResult(answer="Q4 summary [1]", refusal_reason=None, used_citation_indices=[1])
+
+    monkeypatch.setattr("app.retrieval.query_service.RetrievalService", _FakeRetrievalService)
+    monkeypatch.setattr("app.retrieval.query_service.PolicyClient", _FakePolicyClient)
+    monkeypatch.setattr("app.retrieval.query_service.get_session", _fake_session)
+    monkeypatch.setattr("app.retrieval.query_service.persist_policy_decision", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.retrieval.query_service.persist_query_audit", lambda *args, **kwargs: None)
+    monkeypatch.setattr("app.retrieval.query_service.judge_answerability", _fake_judge)
+    monkeypatch.setattr("app.retrieval.query_service.generate_grounded_answer", _fake_generate)
+
+    request = QueryRequest(
+        query="Necesito un resumen de la LP letter Q4 2024 con citas.",
+        mode="qa",
+        include_images=False,
+        retrieval_mode="rag",
+    )
+    entitlements = Entitlements(authenticated=True, user_id="u-1", email="user@example.com", domain="example.com", groups=["hr"])
+
+    response = await run_query_flow(request, entitlements)
+
+    assert captured["doc_ids"] == ["q4-doc"]
+    assert response.refusal_reason is None
+    assert len(response.citations) == 1
+    assert response.citations[0].doc_id == "q4-doc"
+
+
+@pytest.mark.asyncio
 async def test_run_query_flow_llm_selector_scopes_single_doc_request(monkeypatch) -> None:
     @contextmanager
     def _fake_session():

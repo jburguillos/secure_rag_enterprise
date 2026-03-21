@@ -23,6 +23,17 @@ def _claims_need_userinfo_enrichment(claims: dict[str, Any]) -> bool:
     return not has_email or not has_groups
 
 
+def _userinfo_issuers(*, token_issuer: str | None, keycloak_issuer: str, aliases_raw: str) -> list[str]:
+    ordered: list[str] = []
+    for candidate in [token_issuer, keycloak_issuer, *_issuer_aliases(aliases_raw)]:
+        issuer = str(candidate or "").strip().rstrip("/")
+        if not issuer:
+            continue
+        if issuer not in ordered:
+            ordered.append(issuer)
+    return ordered
+
+
 async def _fetch_userinfo(*, issuer: str, token: str) -> dict[str, Any] | None:
     userinfo_url = issuer.rstrip("/") + "/protocol/openid-connect/userinfo"
     try:
@@ -76,9 +87,16 @@ async def resolve_entitlements(
         raise HTTPException(status_code=401, detail="Invalid token") from exc
 
     if _claims_need_userinfo_enrichment(claims):
-        userinfo = await _fetch_userinfo(issuer=settings.keycloak_issuer, token=token)
-        if userinfo:
-            claims = _merge_claims_with_userinfo(claims, userinfo)
+        token_issuer = str(claims.get("iss") or "")
+        for issuer in _userinfo_issuers(
+            token_issuer=token_issuer,
+            keycloak_issuer=settings.keycloak_issuer,
+            aliases_raw=settings.keycloak_issuer_aliases,
+        ):
+            userinfo = await _fetch_userinfo(issuer=issuer, token=token)
+            if userinfo:
+                claims = _merge_claims_with_userinfo(claims, userinfo)
+                break
 
     entitlements = Entitlements.from_claims(claims)
     return apply_drive_group_mapping(entitlements)

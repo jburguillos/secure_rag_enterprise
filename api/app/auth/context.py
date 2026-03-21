@@ -9,6 +9,16 @@ def _normalize_group(value: str) -> str:
     return value.strip().lower().lstrip("/")
 
 
+def _first_email_like(*candidates: object) -> str | None:
+    for value in candidates:
+        if not value:
+            continue
+        raw = str(value).strip().lower()
+        if "@" in raw:
+            return raw
+    return None
+
+
 @dataclass
 class Entitlements:
     authenticated: bool = False
@@ -21,7 +31,12 @@ class Entitlements:
 
     @classmethod
     def from_claims(cls, claims: dict) -> "Entitlements":
-        email = (claims.get("email") or "").lower() or None
+        email = _first_email_like(
+            claims.get("email"),
+            claims.get("upn"),
+            claims.get("emailAddress"),
+            claims.get("preferred_username"),
+        )
         domain = email.split("@", 1)[1] if email and "@" in email else None
 
         raw_groups = [str(g) for g in (claims.get("groups") or []) if g]
@@ -29,6 +44,13 @@ class Entitlements:
         if not raw_groups:
             realm_roles = ((claims.get("realm_access") or {}).get("roles") or [])
             raw_groups.extend(str(role) for role in realm_roles if role)
+        if not raw_groups:
+            resource_access = claims.get("resource_access") or {}
+            if isinstance(resource_access, dict):
+                for client_claim in resource_access.values():
+                    if not isinstance(client_claim, dict):
+                        continue
+                    raw_groups.extend(str(role) for role in (client_claim.get("roles") or []) if role)
 
         groups = sorted({_normalize_group(g) for g in raw_groups if _normalize_group(g)})
         user_id = claims.get("sub") or claims.get("preferred_username")

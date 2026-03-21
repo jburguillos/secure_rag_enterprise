@@ -48,11 +48,12 @@ _SUMMARIZE_HINTS = (
     "cada fichero",
 )
 
-_DOC_EXTENSIONS = (".pdf", ".docx", ".txt", ".md", ".doc")
+_DOC_EXTENSIONS = (".pdf", ".docx", ".txt", ".md", ".doc", ".xlsx")
 _SINGLE_DOC_HINT_PATTERNS = (
     re.compile(r"\bin\s+[a-zA-Z0-9_.\-\s]+\.(pdf|docx|txt|md|doc)\b", re.IGNORECASE),
     re.compile(r"\b(this|that|the)\s+(paper|document|doc|file|pdf)\b", re.IGNORECASE),
     re.compile(r"\b(este|esta|ese|esa)\s+(documento|archivo|fichero|pdf)\b", re.IGNORECASE),
+    re.compile(r"\b(?:q[1-4]|20\d{2}).{0,32}\bletter\b|\bletter\b.{0,32}(?:q[1-4]|20\d{2})", re.IGNORECASE),
 )
 _MULTI_DOC_HINT_PATTERNS = (
     re.compile(r"\b(all|each|every|compare|across|documents|files|papers|docs)\b", re.IGNORECASE),
@@ -64,6 +65,7 @@ _SINGLE_DOC_WORD_PATTERNS = (
     re.compile(r"\bdoc\b", re.IGNORECASE),
     re.compile(r"\bfile\b", re.IGNORECASE),
     re.compile(r"\bpdf\b", re.IGNORECASE),
+    re.compile(r"\bxlsx\b", re.IGNORECASE),
     re.compile(r"\bdocumento\b", re.IGNORECASE),
     re.compile(r"\barchivo\b", re.IGNORECASE),
     re.compile(r"\bfichero\b", re.IGNORECASE),
@@ -267,7 +269,80 @@ def _targeted_doc_ids_from_query(query: str, nodes: list[Any]) -> set[str]:
                 matched.add(doc_id)
                 break
 
+    if matched:
+        return matched
+
+    def _doc_tokens(text: str) -> set[str]:
+        tokens = {
+            token
+            for token in re.findall(r"[a-zA-Z0-9_]+", (text or "").lower())
+            if token and token not in _QUERY_STOPWORDS
+        }
+        return {token for token in tokens if len(token) > 1}
+
+    query_tokens = _doc_tokens(query)
+    if len(query_tokens) < 2:
+        return set()
+
+    scored: list[tuple[int, str]] = []
+    for node in nodes:
+        payload = getattr(node, "payload", None) or {}
+        doc_id = str(payload.get("doc_id") or payload.get("file_id") or "").strip()
+        if not doc_id:
+            continue
+        title = str(payload.get("name") or payload.get("title") or "")
+        title_tokens = _doc_tokens(title)
+        overlap = query_tokens & title_tokens
+        if len(overlap) < 2:
+            continue
+
+        score = len(overlap)
+        if any(re.fullmatch(r"20\d{2}", tok) for tok in overlap):
+            score += 1
+        if any(re.fullmatch(r"q[1-4]", tok) for tok in overlap):
+            score += 1
+        scored.append((score, doc_id))
+
+    if not scored:
+        return set()
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    top_score = scored[0][0]
+    top_doc_ids = {doc_id for score, doc_id in scored if score == top_score}
+    if len(top_doc_ids) == 1 and top_score >= 3:
+        return top_doc_ids
+
     return matched
+
+
+async def _pre_retrieval_targeted_doc_ids(
+    *,
+    query: str,
+    retrieval: RetrievalService,
+    entitlements: Entitlements,
+    policy: PolicyClient,
+    effective_filters: QueryFilters | None,
+) -> set[str]:
+    if not _looks_like_single_doc_request(query):
+        return set()
+
+    retrieve_inventory = getattr(retrieval, "retrieve_inventory", None)
+    if not callable(retrieve_inventory):
+        return set()
+
+    inventory_nodes = retrieve_inventory(
+        query=query,
+        entitlements=entitlements,
+        query_filters=effective_filters,
+        limit=min(_INVENTORY_SCAN_LIMIT, 1000),
+    )
+    inventory_docs = _unique_inventory_docs(inventory_nodes)
+    allowed_docs, _ = await _authorize_nodes(
+        nodes=inventory_docs,
+        entitlements=entitlements,
+        policy=policy,
+    )
+    return _targeted_doc_ids_from_query(query, allowed_docs)
 
 
 def _candidate_docs(nodes: list[Any]) -> list[dict[str, str]]:
@@ -1204,6 +1279,19 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
             retrieval=retrieval,
             policy=policy,
             effective_filters=effective_filters,
+        )
+
+    pre_targeted_doc_ids = await _pre_retrieval_targeted_doc_ids(
+        query=request.query,
+        retrieval=retrieval,
+        entitlements=entitlements,
+        policy=policy,
+        effective_filters=effective_filters,
+    )
+    if pre_targeted_doc_ids:
+        effective_filters = _merge_query_filters(
+            effective_filters,
+            QueryFilters(doc_ids=sorted(pre_targeted_doc_ids)),
         )
 
     requested_top_k = request.top_k if request.top_k and request.top_k > 0 else settings.top_k_fused
