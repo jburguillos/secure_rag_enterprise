@@ -96,6 +96,13 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class GenerationOverrides(BaseModel):
+    model: str | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    max_tokens: int | None = None
+
+
 class QueryRequest(BaseModel):
     query: str
     mode: Literal["qa", "summarize"] = "qa"
@@ -105,6 +112,7 @@ class QueryRequest(BaseModel):
     filters: QueryFilters | None = None
     chat_history: list[ChatMessage] = Field(default_factory=list)
     user_context: UserContext | None = None
+    generation_overrides: GenerationOverrides | None = None
 
 
 class PolicyDecision(BaseModel):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 import json
 import re
 from typing import Any
@@ -132,6 +133,12 @@ _INVENTORY_CATEGORY_HINTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 _INVENTORY_SCAN_LIMIT = 5000
 _INVENTORY_EXAMPLES_PER_CATEGORY = 3
 _CLARIFICATION_SUGGESTION_LIMIT = 3
+_MIN_TEMPERATURE = 0.0
+_MAX_TEMPERATURE = 1.5
+_MIN_TOP_P = 0.1
+_MAX_TOP_P = 1.0
+_MIN_MAX_TOKENS = 64
+_MAX_MAX_TOKENS = 2048
 _QUERY_STOPWORDS = {
     "the",
     "a",
@@ -160,6 +167,46 @@ _QUERY_STOPWORDS = {
     "corpus",
     "fund",
 }
+
+
+@dataclass(frozen=True)
+class EffectiveGenerationOptions:
+    model: str | None
+    temperature: float
+    top_p: float | None
+    max_tokens: int
+
+
+def _clamp_float(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
+
+
+def _clamp_int(value: int, minimum: int, maximum: int) -> int:
+    return max(minimum, min(maximum, value))
+
+
+def _resolve_generation_options(request: QueryRequest) -> EffectiveGenerationOptions:
+    settings = get_settings()
+    overrides = request.generation_overrides
+    if overrides is None:
+        return EffectiveGenerationOptions(
+            model=settings.ollama_chat_model,
+            temperature=0.0,
+            top_p=None,
+            max_tokens=384,
+        )
+
+    model = str(overrides.model or "").strip() or settings.ollama_chat_model
+    temperature = _clamp_float(float(overrides.temperature), _MIN_TEMPERATURE, _MAX_TEMPERATURE) if overrides.temperature is not None else 0.0
+    top_p = _clamp_float(float(overrides.top_p), _MIN_TOP_P, _MAX_TOP_P) if overrides.top_p is not None else None
+    max_tokens = _clamp_int(int(overrides.max_tokens), _MIN_MAX_TOKENS, _MAX_MAX_TOKENS) if overrides.max_tokens is not None else 384
+
+    return EffectiveGenerationOptions(
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens,
+    )
 _QUERY_TERM_EXPANSIONS: dict[str, tuple[str, ...]] = {
     "commitment": ("commitments", "lp", "register", "capital call", "capital calls"),
     "capital": ("fundraising", "capital call", "capital calls"),
@@ -1028,6 +1075,7 @@ async def _build_smalltalk_query_response(
     entitlements: Entitlements,
     run_id: UUID,
     reason: str,
+    generation_options: EffectiveGenerationOptions,
 ) -> QueryResponse:
     """Return a conversational response for non-RAG turns."""
 
@@ -1035,12 +1083,19 @@ async def _build_smalltalk_query_response(
     smalltalk_mode = _effective_query_mode(request)
     fallback_answer = build_smalltalk_response(request.query, chat_mode=True)
     history_payload = [m.model_dump() for m in request.chat_history]
-    generated = await generate_chat_answer(query=request.query, chat_history=history_payload)
+    generated = await generate_chat_answer(
+        query=request.query,
+        chat_history=history_payload,
+        model=generation_options.model,
+        temperature=generation_options.temperature,
+        top_p=generation_options.top_p,
+        max_tokens=generation_options.max_tokens,
+    )
 
     answer = generated.answer or fallback_answer
     audit_refusal_reason = generated.refusal_reason if not generated.answer else None
     response_status = "chat" if generated.answer else "chat_fallback"
-    model_id = settings.ollama_chat_model if generated.answer else "rule_based_non_rag"
+    model_id = generation_options.model if generated.answer else "rule_based_non_rag"
 
     policy_model = PolicyDecision(
         allow=True,
@@ -1061,6 +1116,7 @@ async def _build_smalltalk_query_response(
                 "retrieval_mode": request.retrieval_mode,
                 "effective_mode": smalltalk_mode,
                 "chat_llm_used": bool(generated.answer),
+                "generation_overrides": request.generation_overrides.model_dump() if request.generation_overrides else None,
                 "effective_top_k": 0,
                 "evidence_count": 0,
                 "allowed_count": 0,
@@ -1098,6 +1154,7 @@ async def _build_smalltalk_query_response(
 async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> QueryResponse:
     settings = get_settings()
     run_id = uuid4()
+    generation_options = _resolve_generation_options(request)
     effective_mode = _effective_query_mode(request)
     inferred_filters = _infer_query_filters(request.query)
     effective_filters = _merge_query_filters(request.filters, inferred_filters)
@@ -1122,6 +1179,7 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
             entitlements=entitlements,
             run_id=run_id,
             reason="forced_chat_mode",
+            generation_options=generation_options,
         )
 
     if request.retrieval_mode == "auto":
@@ -1132,6 +1190,7 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
                 entitlements=entitlements,
                 run_id=run_id,
                 reason=f"auto_{auto_decision.reason}",
+                generation_options=generation_options,
             )
 
     retrieval = RetrievalService()
@@ -1210,6 +1269,10 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
             evidence=judged_nodes,
             citations=judged_citations,
             include_images=request.include_images,
+            model=generation_options.model,
+            temperature=generation_options.temperature,
+            top_p=generation_options.top_p,
+            max_tokens=generation_options.max_tokens,
         )
     else:
         if (answerability.reason or "") == "insufficient_evidence":
@@ -1288,6 +1351,11 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
                 "answerability_source": answerability.source,
                 "answerability_support_count": len(judged_citations),
                 "used_citation_count": len(citations),
+                "generation_overrides": request.generation_overrides.model_dump() if request.generation_overrides else None,
+                "generation_effective_model": generation_options.model,
+                "generation_effective_temperature": generation_options.temperature,
+                "generation_effective_top_p": generation_options.top_p,
+                "generation_effective_max_tokens": generation_options.max_tokens,
             },
             policy_result=policy_model.model_dump(),
             policy_version=policy_model.policy_version,
@@ -1305,7 +1373,7 @@ async def run_query_flow(request: QueryRequest, entitlements: Entitlements) -> Q
             evidence_rows=evidence_rows,
             citation_rows=citation_rows,
             policy_decision_id=policy_model.decision_id,
-            model_id=settings.ollama_chat_model,
+            model_id=generation_options.model or settings.ollama_chat_model,
             model_version="local",
         )
 

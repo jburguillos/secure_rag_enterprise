@@ -32,6 +32,14 @@ KEYCLOAK_TOKEN_URL = os.getenv("KEYCLOAK_TOKEN_URL", f"{KEYCLOAK_ISSUER}/protoco
 KEYCLOAK_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "secure-rag-api")
 DEFAULT_AUTH_USERNAME = os.getenv("UI_DEFAULT_USERNAME", "")
 DEFAULT_AUTH_PASSWORD = os.getenv("UI_DEFAULT_PASSWORD", "")
+DEFAULT_CHAT_MODEL = os.getenv("UI_DEFAULT_CHAT_MODEL", os.getenv("OLLAMA_CHAT_MODEL", "llama3.2:3b"))
+DEFAULT_TEMPERATURE = float(os.getenv("UI_DEFAULT_TEMPERATURE", "0.0"))
+DEFAULT_TOP_P = float(os.getenv("UI_DEFAULT_TOP_P", "0.9"))
+DEFAULT_MAX_TOKENS = int(os.getenv("UI_DEFAULT_MAX_TOKENS", "384"))
+_raw_model_options = [m.strip() for m in os.getenv("UI_MODEL_OPTIONS", "llama3.2:3b,llama3.1:8b").split(",") if m.strip()]
+if DEFAULT_CHAT_MODEL and DEFAULT_CHAT_MODEL not in _raw_model_options:
+    _raw_model_options.insert(0, DEFAULT_CHAT_MODEL)
+MODEL_OPTIONS = _raw_model_options or [DEFAULT_CHAT_MODEL]
 AUTH_ENABLED = _bool_env("AUTH_ENABLED", False)
 UI_REQUIRE_LOGIN = _bool_env("UI_REQUIRE_LOGIN", AUTH_ENABLED)
 
@@ -236,6 +244,14 @@ if "local_acl" not in st.session_state:
     st.session_state.local_acl = DEFAULT_LOCAL_ACL
 if "dev_mode_bypass" not in st.session_state:
     st.session_state.dev_mode_bypass = not UI_REQUIRE_LOGIN
+if "llm_model" not in st.session_state:
+    st.session_state.llm_model = DEFAULT_CHAT_MODEL
+if "llm_temperature" not in st.session_state:
+    st.session_state.llm_temperature = DEFAULT_TEMPERATURE
+if "llm_top_p" not in st.session_state:
+    st.session_state.llm_top_p = DEFAULT_TOP_P
+if "llm_max_tokens" not in st.session_state:
+    st.session_state.llm_max_tokens = DEFAULT_MAX_TOKENS
 
 
 def _safe_response_data(response: requests.Response) -> dict[str, Any]:
@@ -592,6 +608,36 @@ with st.sidebar:
     if st.session_state.auth_session_warning:
         st.warning(st.session_state.auth_session_warning)
 
+    st.markdown("---")
+    st.caption("LLM Settings")
+    st.session_state.llm_model = st.selectbox(
+        "Model",
+        options=MODEL_OPTIONS,
+        index=MODEL_OPTIONS.index(st.session_state.llm_model) if st.session_state.llm_model in MODEL_OPTIONS else 0,
+        help="Generation model used for chat and grounded answers.",
+    )
+    st.session_state.llm_temperature = st.slider(
+        "Temperature",
+        min_value=0.0,
+        max_value=1.2,
+        value=float(st.session_state.llm_temperature),
+        step=0.05,
+    )
+    st.session_state.llm_top_p = st.slider(
+        "Top-p",
+        min_value=0.1,
+        max_value=1.0,
+        value=float(st.session_state.llm_top_p),
+        step=0.05,
+    )
+    st.session_state.llm_max_tokens = st.slider(
+        "Max tokens",
+        min_value=64,
+        max_value=1024,
+        value=int(st.session_state.llm_max_tokens),
+        step=32,
+    )
+
 user_groups = [g.strip() for g in st.session_state.groups_text.splitlines() if g.strip()]
 
 st.markdown('<div class="pp-page-title">Secure Multimodal RAG Workspace</div>', unsafe_allow_html=True)
@@ -783,6 +829,12 @@ else:
             "mode": _infer_query_mode(question),
             "retrieval_mode": active_mode,
             "include_images": True,
+            "generation_overrides": {
+                "model": st.session_state.llm_model,
+                "temperature": float(st.session_state.llm_temperature),
+                "top_p": float(st.session_state.llm_top_p),
+                "max_tokens": int(st.session_state.llm_max_tokens),
+            },
             "chat_history": history_payload,
             "user_context": {
                 "email": st.session_state.user_email,

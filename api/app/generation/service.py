@@ -344,7 +344,15 @@ def _build_chat_messages(*, query: str, chat_history: list[dict[str, Any]] | Non
     return messages
 
 
-async def generate_chat_answer(*, query: str, chat_history: list[dict[str, Any]] | None) -> GenerationResult:
+async def generate_chat_answer(
+    *,
+    query: str,
+    chat_history: list[dict[str, Any]] | None,
+    model: str | None = None,
+    temperature: float = 0.4,
+    top_p: float | None = None,
+    max_tokens: int = 384,
+) -> GenerationResult:
     messages = _build_chat_messages(query=query, chat_history=chat_history)
     client = OllamaClient()
     settings = get_settings()
@@ -352,8 +360,10 @@ async def generate_chat_answer(*, query: str, chat_history: list[dict[str, Any]]
     try:
         answer = await client.generate_from_messages(
             messages=messages,
-            temperature=0.4,
-            num_predict=384,
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+            num_predict=max_tokens,
             num_ctx=2048,
         )
     except Exception:
@@ -371,6 +381,10 @@ async def generate_grounded_answer(
     evidence: list[RetrievedNode],
     citations: list[Citation],
     include_images: bool,
+    model: str | None = None,
+    temperature: float = 0.0,
+    top_p: float | None = None,
+    max_tokens: int = 384,
 ) -> GenerationResult:
     settings = get_settings()
 
@@ -460,7 +474,15 @@ async def generate_grounded_answer(
 
     client = OllamaClient()
     try:
-        answer = await client.generate(system_prompt=system, user_prompt=prompt)
+        answer = await client.generate(
+            system_prompt=system,
+            user_prompt=prompt,
+            model=model,
+            temperature=temperature,
+            top_p=top_p,
+            num_predict=max_tokens,
+            num_ctx=2048,
+        )
     except Exception:
         return GenerationResult(answer=settings.llm_unavailable_text, refusal_reason="llm_unavailable")
 
