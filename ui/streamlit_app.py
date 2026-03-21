@@ -281,6 +281,59 @@ def _decode_jwt_exp(access_token: str) -> int | None:
         return None
 
 
+def _decode_jwt_claims(access_token: str) -> dict[str, Any]:
+    try:
+        parts = access_token.split(".")
+        if len(parts) != 3:
+            return {}
+        payload = parts[1]
+        payload += "=" * (-len(payload) % 4)
+        raw = base64.urlsafe_b64decode(payload.encode("utf-8"))
+        data = json.loads(raw.decode("utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _normalized_groups_from_claims(claims: dict[str, Any]) -> list[str]:
+    raw_groups = claims.get("groups")
+    groups: list[str] = []
+    if isinstance(raw_groups, list):
+        groups = [str(g) for g in raw_groups if g]
+    if not groups:
+        realm_access = claims.get("realm_access")
+        if isinstance(realm_access, dict):
+            roles = realm_access.get("roles")
+            if isinstance(roles, list):
+                groups = [str(r) for r in roles if r]
+    normalized = sorted({g.strip().lower().lstrip("/") for g in groups if str(g).strip()})
+    return normalized
+
+
+def _effective_user_context() -> tuple[dict[str, Any], list[str]]:
+    # Priority: explicit user input > token claims.
+    explicit_groups = [g.strip().lower() for g in st.session_state.groups_text.splitlines() if g.strip()]
+    explicit_email = str(st.session_state.user_email or "").strip().lower()
+    explicit_domain = str(st.session_state.user_domain or "").strip().lower()
+
+    token = str(st.session_state.manual_token or st.session_state.auth_access_token or "").strip()
+    claims = _decode_jwt_claims(token) if token else {}
+    claim_email = str(claims.get("email") or "").strip().lower()
+    claim_domain = claim_email.split("@", 1)[1] if "@" in claim_email else ""
+    claim_groups = _normalized_groups_from_claims(claims)
+
+    email = explicit_email or claim_email
+    domain = explicit_domain or claim_domain
+    groups = explicit_groups or claim_groups
+
+    context = {
+        "email": email,
+        "domain": domain,
+        "groups": groups,
+    }
+    return context, groups
+
+
 def _store_token_payload(payload: dict[str, Any]) -> None:
     access_token = str(payload.get("access_token") or "").strip()
     if not access_token:
@@ -638,7 +691,7 @@ with st.sidebar:
         step=32,
     )
 
-user_groups = [g.strip() for g in st.session_state.groups_text.splitlines() if g.strip()]
+effective_user_context, user_groups = _effective_user_context()
 
 st.markdown('<div class="pp-page-title">Secure Multimodal RAG Workspace</div>', unsafe_allow_html=True)
 st.markdown(
@@ -836,11 +889,7 @@ else:
                 "max_tokens": int(st.session_state.llm_max_tokens),
             },
             "chat_history": history_payload,
-            "user_context": {
-                "email": st.session_state.user_email,
-                "domain": st.session_state.user_domain,
-                "groups": user_groups,
-            },
+            "user_context": effective_user_context,
         }
         with st.chat_message("assistant"):
             with st.spinner("Running retrieval and generation..."):
