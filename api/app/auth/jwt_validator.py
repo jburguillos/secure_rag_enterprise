@@ -36,12 +36,19 @@ class JWTValidator:
 
     @staticmethod
     def _claim_audiences(claims: dict[str, Any]) -> set[str]:
+        audiences: set[str] = set()
         aud = claims.get("aud")
         if isinstance(aud, str):
-            return {aud}
-        if isinstance(aud, list):
-            return {str(item) for item in aud if item}
-        return set()
+            audiences.add(aud)
+        elif isinstance(aud, list):
+            audiences.update({str(item) for item in aud if item})
+
+        # Keycloak public-client access tokens may omit `aud` and expose the
+        # intended client only as `azp` (authorized party).
+        azp = claims.get("azp")
+        if isinstance(azp, str) and azp.strip():
+            audiences.add(azp.strip())
+        return audiences
 
     async def _fetch_jwks(self) -> dict[str, Any]:
         now = time.time()

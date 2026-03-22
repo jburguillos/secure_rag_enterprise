@@ -170,6 +170,7 @@ class RetrievalService:
         self,
         entitlements: Entitlements,
         *,
+        query: str | None = None,
         query_filters: QueryFilters | None = None,
         limit: int = 5000,
     ) -> list[RetrievedNode]:
@@ -177,6 +178,9 @@ class RetrievalService:
 
         This bypasses semantic ranking and scrolls authorized nodes so the caller can
         answer from document metadata (titles, paths, mime types) rather than chunk text.
+        The optional ``query`` parameter is accepted for compatibility with higher-level
+        inventory and clarification flows that may pass it even though inventory retrieval
+        itself does not use semantic ranking.
         """
 
         metadata_filter = build_metadata_filter(query_filters)

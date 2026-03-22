@@ -504,6 +504,7 @@ KEYCLOAK_AUDIENCE=secure-rag-api
 # If your realm emits aud=account for password grant, allow both:
 # KEYCLOAK_AUDIENCE=secure-rag-api,account
 ```
+The validator also accepts Keycloak access tokens that omit `aud` but include `azp=secure-rag-api`, which is common for public-client password grant flows in local Docker setups.
 4. Recreate API:
 ```bash
 docker compose up -d --force-recreate api
@@ -619,7 +620,6 @@ Invoke-RestMethod -Method Post `
   -ContentType "application/json" `
   -Body ($q | ConvertTo-Json -Depth 12)
 ```
-
 
 
 
