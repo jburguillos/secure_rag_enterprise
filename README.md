@@ -55,6 +55,52 @@ secure_rag_enterprise/
 For cloud rollout (pilot VM and production-grade Kubernetes), use:
 - [DEPLOYMENT_CLOUD.md](DEPLOYMENT_CLOUD.md)
 
+## Local Baseline Before VM Deployment
+Before touching a VM, treat your local environment as the source of truth and capture a reproducible deployment baseline from the exact working commit.
+
+Recommended flow:
+1. Ensure local containers and models are working.
+2. Capture baseline artifacts from the exact local commit.
+3. Freeze that commit with a deployment tag.
+4. Deploy that exact tag/commit to the VM.
+
+Capture the local baseline with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/capture_local_baseline.ps1 `
+  -ApiUrl http://localhost:8000 `
+  -UiUrl http://localhost:8501 `
+  -Username jburguillos.drive `
+  -Password ChangeMe123!
+```
+
+This creates:
+
+- `artifacts/capstone/<timestamp>/local_baseline/`
+
+The baseline bundle includes:
+- git commit, branch, and working tree status
+- `docker compose ps/config/images`
+- API health + metrics snapshot
+- UI HTTP reachability snapshot
+- token acquisition + decoded JWT claims
+- one authenticated Drive query smoke check
+- one authenticated tabular query smoke check
+- `09_deploy_manifest.json` with the exact local commit, expected VM services, and the key auth/model settings that must be reproduced in cloud
+- a linked Phase 5 artifact capture run, including the output folder path recorded in `summary.json`
+
+Use `summary.json` and `09_deploy_manifest.json` together as the single deployment handoff when moving the project to a VM. Do not deploy a floating `main` state that has not been captured locally.
+
+Recommended release discipline after a good baseline capture:
+
+```powershell
+git rev-parse --short HEAD
+git tag local-baseline-$(Get-Date -Format yyyyMMdd_HHmm)
+git push origin main --tags
+```
+
+Then deploy that exact commit or tag to the VM. Do not continue patching the VM against a newer moving local state.
+
 ## Prerequisites
 - Docker + Docker Compose
 - Python 3.11+ (for local scripts/tests)

@@ -526,6 +526,18 @@ def _auth_status_text() -> str:
     return f"Authenticated. Token expires in ~{remaining}s."
 
 
+def _auth_identity_text() -> str:
+    token = str(st.session_state.manual_token or st.session_state.auth_access_token or "").strip()
+    if not token:
+        return ""
+    claims = _decode_jwt_claims(token)
+    username = str(claims.get("preferred_username") or "").strip()
+    email = str(claims.get("email") or "").strip()
+    if username and email:
+        return f"{username} · {email}"
+    return username or email
+
+
 def _run_ingest_job_with_poll(*, endpoint: str, payload: dict[str, Any], label: str) -> tuple[int, dict[str, Any]]:
     start_status, start_data = _api_request("POST", endpoint, payload=payload, timeout=30)
     if start_status >= 400:
@@ -658,39 +670,51 @@ with st.sidebar:
         options=nav_options,
         index=nav_options.index(st.session_state.navigation),
     )
+    st.markdown("---")
+    st.caption("Session")
     st.caption(_auth_status_text())
+    identity_text = _auth_identity_text()
+    if identity_text:
+        st.caption(identity_text)
     if st.session_state.auth_session_warning:
         st.warning(st.session_state.auth_session_warning)
+    if _is_authenticated() or str(st.session_state.manual_token or "").strip():
+        if st.button("Sign out", use_container_width=True):
+            st.session_state.manual_token = ""
+            _clear_auth_session()
+            st.rerun()
 
-    st.markdown("---")
-    st.caption("LLM Settings")
-    st.session_state.llm_model = st.selectbox(
-        "Model",
-        options=MODEL_OPTIONS,
-        index=MODEL_OPTIONS.index(st.session_state.llm_model) if st.session_state.llm_model in MODEL_OPTIONS else 0,
-        help="Generation model used for chat and grounded answers.",
-    )
-    st.session_state.llm_temperature = st.slider(
-        "Temperature",
-        min_value=0.0,
-        max_value=1.2,
-        value=float(st.session_state.llm_temperature),
-        step=0.05,
-    )
-    st.session_state.llm_top_p = st.slider(
-        "Top-p",
-        min_value=0.1,
-        max_value=1.0,
-        value=float(st.session_state.llm_top_p),
-        step=0.05,
-    )
-    st.session_state.llm_max_tokens = st.slider(
-        "Max tokens",
-        min_value=64,
-        max_value=1024,
-        value=int(st.session_state.llm_max_tokens),
-        step=32,
-    )
+    if st.session_state.navigation == "Workspace":
+        st.markdown("---")
+        with st.expander("Generation Settings", expanded=False):
+            st.caption("These controls affect workspace answers only.")
+            st.session_state.llm_model = st.selectbox(
+                "Model",
+                options=MODEL_OPTIONS,
+                index=MODEL_OPTIONS.index(st.session_state.llm_model) if st.session_state.llm_model in MODEL_OPTIONS else 0,
+                help="Generation model used for chat and grounded answers.",
+            )
+            st.session_state.llm_temperature = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=1.2,
+                value=float(st.session_state.llm_temperature),
+                step=0.05,
+            )
+            st.session_state.llm_top_p = st.slider(
+                "Top-p",
+                min_value=0.1,
+                max_value=1.0,
+                value=float(st.session_state.llm_top_p),
+                step=0.05,
+            )
+            st.session_state.llm_max_tokens = st.slider(
+                "Max tokens",
+                min_value=64,
+                max_value=1024,
+                value=int(st.session_state.llm_max_tokens),
+                step=32,
+            )
 
 effective_user_context, user_groups = _effective_user_context()
 
@@ -754,88 +778,6 @@ if st.session_state.navigation == "Ingestion":
                 st.error(f"status={status} data={data}")
             else:
                 st.json(data)
-elif st.session_state.navigation == "Runs":
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown(
-            f'<div class="pp-kpi"><div class="pp-kpi-label">Auto last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("auto") or "-"}</div></div>',
-            unsafe_allow_html=True,
-        )
-    with c2:
-        st.markdown(
-            f'<div class="pp-kpi"><div class="pp-kpi-label">RAG last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("rag") or "-"}</div></div>',
-            unsafe_allow_html=True,
-        )
-    with c3:
-        st.markdown(
-            f'<div class="pp-kpi"><div class="pp-kpi-label">Chat last run</div><div class="pp-kpi-value">{st.session_state.last_run_by_mode.get("chat") or "-"}</div></div>',
-            unsafe_allow_html=True,
-        )
-    run_id = st.text_input("Inspect run_id", value=st.session_state.last_run_by_mode.get(st.session_state.chat_retrieval_mode) or "")
-    if st.button("Load run details", type="primary"):
-        if not run_id.strip():
-            st.error("run_id is required")
-        else:
-            status, data = _api_request("GET", f"/runs/{run_id}", timeout=30)
-            st.caption(f"status={status}")
-            if status >= 400:
-                st.error(data)
-            else:
-                st.json(data)
-
-elif st.session_state.navigation == "Admin":
-    st.subheader("Admin Console")
-    st.caption("Requires admin bearer token and AUTH_ENABLED=true")
-
-    if st.button("Load Drive Group Mapping"):
-        status, data = _api_request("GET", "/admin/settings/drive-group-map")
-        if status < 400:
-            st.session_state.admin_mapping_text = json.dumps(data.get("mapping", {}), indent=2)
-            st.success(f"Loaded mapping from {data.get('source')}")
-        else:
-            st.error(f"status={status} data={data}")
-
-    st.session_state.admin_mapping_text = st.text_area(
-        "Drive group mapping JSON",
-        value=st.session_state.admin_mapping_text,
-        height=180,
-    )
-    if st.button("Save Drive Group Mapping", type="primary"):
-        try:
-            mapping = json.loads(st.session_state.admin_mapping_text or "{}")
-        except json.JSONDecodeError as exc:
-            st.error(f"Invalid JSON: {exc}")
-            mapping = None
-        if mapping is not None:
-            status, data = _api_request("PUT", "/admin/settings/drive-group-map", payload={"mapping": mapping})
-            if status < 400:
-                st.success("Drive mapping saved to DB")
-                st.json(data)
-            else:
-                st.error(f"status={status} data={data}")
-
-    st.markdown("### Access Preview")
-    p_email = st.text_input("preview email", value=st.session_state.user_email)
-    p_domain = st.text_input("preview domain", value=st.session_state.user_domain)
-    p_groups = st.text_input("preview groups (comma separated)", value=",".join(user_groups))
-    p_sources = st.text_input("sources filter (comma separated, optional)", value="")
-    p_limit = st.number_input("preview limit", min_value=1, max_value=500, value=100)
-    if st.button("Run Access Preview", type="primary"):
-        payload = {
-            "principal": {
-                "email": p_email or None,
-                "domain": p_domain or None,
-                "groups": [g.strip() for g in p_groups.split(",") if g.strip()],
-            },
-            "sources": [s.strip() for s in p_sources.split(",") if s.strip()],
-            "limit": int(p_limit),
-        }
-        status, data = _api_request("POST", "/admin/access/preview", payload=payload)
-        if status < 400:
-            st.json(data)
-        else:
-            st.error(f"status={status} data={data}")
-
 else:
     c1, c2, c3 = st.columns(3)
     with c1:
