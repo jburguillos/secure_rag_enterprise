@@ -18,9 +18,9 @@ Supported content types in the current MVP:
 ## Synthetic VC Dataset (Committed)
 This repository now includes a synthetic venture-capital dataset ZIP for reproducible demos and capstone validation:
 - [tests/data/synthetic/vc_drive_venture_fund_sintetico.zip](tests/data/synthetic/vc_drive_venture_fund_sintetico.zip)
-- Dataset scope: 204 files total
-- File types inside ZIP: `pdf` (40), `docx` (46), `txt` (27), `md` (27), `xlsx` (42), `csv` (21), `json` (1)
-- Important: `csv` files are intentionally present in the synthetic corpus but are skipped by current ingestion rules
+- Dataset scope: 155 files total
+- File types inside ZIP: `pdf` (40), `docx` (46), `txt` (27), `xlsx` (42)
+- The committed validation ZIP is aligned with the file types currently supported by the ingestion pipeline
 
 Usage:
 1. Unzip locally or upload extracted folders to Google Drive.
@@ -620,8 +620,6 @@ Invoke-RestMethod -Method Post `
   -ContentType "application/json" `
   -Body ($q | ConvertTo-Json -Depth 12)
 ```
-
-
 
 
 

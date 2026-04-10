@@ -32,6 +32,7 @@ artifacts/
 .idea/
 .DS_Store
 Thumbs.db
+*.lnk
 
 # Build
 build/
